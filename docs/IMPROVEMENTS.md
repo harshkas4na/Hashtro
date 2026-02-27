@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 36 / 57 done**
+**Progress: 39 / 57 done**
 
 ---
 
@@ -156,7 +156,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **37. ✅ `deriveDirection` always returns "SHORT" in practice**
 `cards/page.tsx:37-51` — `deriveDirection(vibeStatus)` checks if the vibe_status string contains words like "confident", "optimistic", "energetic". But the actual vibe_status values the AI returns are `"Stellar"`, `"Ascending"`, `"Shaky"`, `"Eclipse"` — none of which contain those keywords. So this function always returns `"SHORT"`. The `TradeModal` correctly uses `card.front.luck_score > 50` directly, making `tradeParams.direction` dead code.
 
-**38. Leverage derived from lucky number, not max_leverage**
+**38. ✅ Leverage derived from lucky number, not max_leverage**
 `cards/page.tsx:88` — `leverage: Math.min(Math.max(luckyNumber, 2), 50)` where `luckyNumber` is parsed from `card.back.lucky_assets.number` (a string like "7" or "11"). The card already has `card.back.lucky_assets.max_leverage` which is the asset-specific leverage ceiling. The lucky number (a numerology value, could be 99) is being used as a leverage multiplier when it was never intended for that.
 
 **39. ✅ `tradeParams` memo is computed but largely unused**
@@ -191,7 +191,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 
 ### UX / Product
 
-**47. No React Error Boundary on the cards page**
+**47. ✅ No React Error Boundary on the cards page**
 `cards/page.tsx` — There is no `ErrorBoundary` wrapping the cards page. Any uncaught render error (e.g., `card.front` is null unexpectedly) shows a blank white screen with no user-facing message and no way to recover.
 
 **48. ✅ Generic error message on horoscope generation failure**
