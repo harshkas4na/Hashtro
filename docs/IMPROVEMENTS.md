@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 39 / 57 done**
+**Progress: 42 / 57 done**
 
 ---
 
@@ -68,8 +68,8 @@ All improvements found from reading the actual code. Each item includes the exac
 **16. ✅ `_is_aspect_applying` uses a simplified check for Time Lord activations**
 `astro_calculator.py:386` — In `detect_time_lord_activations`, `is_applying = transit_speed != 0` is used as the applying check, which is always `True` for any moving planet. The actual applying/separating calculation from `_is_aspect_applying` (which compares current vs future orb) is not called here.
 
-**17. `random` imported but only used in fallback**
-`horoscope_service.py:28` — `import random` is used only in `_generate_random_lucky_assets` for the fallback error path. Minor but worth noting in a production review.
+**17. ✅ `random` imported but only used in fallback**
+`horoscope_service.py:28` — Fixed by #15: `random.choice` is now also used in the main code path for unrecognized-color fallback, making the import fully justified.
 
 ---
 
@@ -197,8 +197,8 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **48. ✅ Generic error message on horoscope generation failure**
 `cards/page.tsx:168` — On failure, `setError("Failed to generate horoscope. Please try again.")` is shown regardless of whether the failure was a network timeout, an AI server error, a user profile issue, or a rate limit. Different errors should give different guidance.
 
-**49. No loading state indicator during balance fetch**
-`cards/page.tsx:75` — `balance` starts as `null` and has no loading boolean. The UI has no way to distinguish "balance not fetched yet" from "user has 0 SOL". The balance component gets `null` on initial render.
+**49. ✅ No loading state indicator during balance fetch**
+`cards/page.tsx:75` — Already handled: `balance.tsx` has its own `loading` state (shows spinner during fetch) and shows "Connecting..." for null, never "0 SOL". `TradeModal` guards `balance !== null` before showing insufficient-balance warning.
 
 **50. Hardcoded public RPC endpoint**
 `cards/page.tsx:127` — `"https://solana-rpc.publicnode.com"` is a public free RPC. It has rate limits, no uptime SLA, and is shared with all other users of the public node. For a trading product, this needs a dedicated paid RPC (Helius, QuickNode, Alchemy).
@@ -225,5 +225,5 @@ The card has a `front` with a shareable `tagline`, `hook_1`, `hook_2`, and `vibe
 **56. ✅ No index on `horoscopes.verified`**
 `schema.sql` — There's an index on `(wallet_address, date)` but none on `verified`. Any query filtering by `verified = false` (e.g., "show me all unverified horoscopes today") does a full table scan.
 
-**57. `user_id` on horoscopes can be NULL**
+**57. ✅ `user_id` on horoscopes can be NULL**
 `schema.sql:32` — `user_id UUID REFERENCES users(id)` has no `NOT NULL` constraint. Horoscopes are looked up by `wallet_address` not `user_id`, so the foreign key is unused in practice and could be null. The relationship between tables is enforced by convention rather than the schema.

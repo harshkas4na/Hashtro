@@ -142,3 +142,16 @@ END $$;
 
 -- Index on verified for fast "show all unverified horoscopes today" queries.
 CREATE INDEX IF NOT EXISTS idx_horoscopes_verified ON horoscopes(verified);
+
+-- Migration: Enforce user_id NOT NULL on horoscopes.
+-- user_id is a FK to users(id) but currently allows NULL, meaning the relation
+-- is unenforced for old rows. Steps:
+--   1. Backfill NULLs by joining on wallet_address (safe if all wallets exist in users)
+--   2. Add NOT NULL constraint
+-- Run manually after verifying no orphaned wallet_addresses:
+-- UPDATE horoscopes h
+--   SET user_id = u.id
+--   FROM users u
+--   WHERE h.wallet_address = u.wallet_address
+--     AND h.user_id IS NULL;
+-- ALTER TABLE horoscopes ALTER COLUMN user_id SET NOT NULL;
