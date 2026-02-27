@@ -4,6 +4,7 @@ High-fidelity horoscope generation using Swiss Ephemeris and Cosmic Data Object
 """
 import json
 import re
+import time
 from datetime import datetime, date
 from typing import Optional, Dict, Any, Tuple
 
@@ -98,6 +99,10 @@ class HoroscopeService:
     Cosmic Data Objects for AI-powered interpretation.
     """
     
+    # Circuit breaker settings
+    _CB_FAILURE_THRESHOLD = 3      # open after N consecutive Gemini failures
+    _CB_RESET_TIMEOUT_S   = 60     # seconds before half-open probe is allowed
+
     def __init__(self):
         try:
             # Using Gemini 1.5-flash for speed and better JSON adherence
@@ -113,13 +118,43 @@ class HoroscopeService:
                 partial_variables={"format_instructions": self.output_parser.get_format_instructions()}
             )
             self.chain = self.prompt | self.llm
-            
+
             self.cdo_enabled = CDO_ENABLED
+
+            # Circuit breaker state (in-process; resets on restart)
+            self._cb_failures: int = 0
+            self._cb_opened_at: Optional[float] = None
+
             logger.info(f"HoroscopeService initialized (CDO: {self.cdo_enabled})")
-            
+
         except Exception as e:
             logger.error(f"Initialization failed: {e}")
             raise
+
+    # ------------------------------------------------------------------
+    # Circuit breaker helpers
+    # ------------------------------------------------------------------
+
+    def _cb_is_open(self) -> bool:
+        """Return True when the Gemini circuit is open and calls should be rejected."""
+        if self._cb_failures < self._CB_FAILURE_THRESHOLD:
+            return False
+        elapsed = time.monotonic() - (self._cb_opened_at or 0)
+        if elapsed >= self._CB_RESET_TIMEOUT_S:
+            # Half-open: allow one probe
+            logger.info("Gemini circuit breaker half-open, allowing probe")
+            return False
+        return True
+
+    def _cb_record_success(self) -> None:
+        self._cb_failures = 0
+        self._cb_opened_at = None
+
+    def _cb_record_failure(self) -> None:
+        self._cb_failures += 1
+        if self._cb_failures >= self._CB_FAILURE_THRESHOLD:
+            self._cb_opened_at = time.monotonic()
+            logger.warning(f"Gemini circuit breaker opened after {self._cb_failures} consecutive failures")
     
     def _parse_date(self, dob: str) -> datetime:
         """Parse date of birth string into datetime object"""
@@ -417,10 +452,21 @@ class HoroscopeService:
             "bearish_moods": bearish_moods_str
         }
         
+        # Reject immediately if the circuit is open (Gemini is flaky/down).
+        if self._cb_is_open():
+            logger.warning("Gemini circuit breaker is open — returning fallback card")
+            return self._get_fallback_card(
+                cdo_summary.get("time_lord", "Sun"),
+                cdo_summary.get("sect", "Diurnal")
+            ), False, "fallback"
+
         try:
             # Invoke AI
             raw_output = await self.chain.ainvoke(prompt_vars)
-            
+
+            # Successful call — reset circuit breaker
+            self._cb_record_success()
+
             # Parse response
             try:
                 card_data = self.output_parser.parse(raw_output.content)
@@ -519,6 +565,12 @@ class HoroscopeService:
             return card_dict, False, generation_mode
             
         except Exception as e:
+            # Record failure against the Gemini circuit breaker.
+            # OutputParserException means the API responded but the JSON was
+            # malformed — that's still a degraded state worth tracking.
+            # Any exception here ultimately means we couldn't serve the user,
+            # so counting all failures is the safest policy.
+            self._cb_record_failure()
             logger.error(f"Generation failure: {e}")
             return self._get_fallback_card(
                 cdo_summary.get("time_lord", "Sun"),
