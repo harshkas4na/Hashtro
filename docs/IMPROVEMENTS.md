@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 33 / 57 done**
+**Progress: 36 / 57 done**
 
 ---
 
@@ -62,7 +62,7 @@ All improvements found from reading the actual code. Each item includes the exac
 **14. ✅ Fallback card hardcodes "Mercury retrograde in the cosmic servers"**
 `horoscope_service.py:542` — The fallback card text is a fixed joke string. Users who hit the fallback always see the exact same message. Should at least vary the time_lord-based message based on the calculated time lord.
 
-**15. Fallback color selection via `len(color) % len(mapping)`**
+**15. ✅ Fallback color selection via `len(color) % len(mapping)`**
 `horoscope_service.py:479` — When the AI hallucinates a color not in the asset mapping, the fallback picks a color using `len(color) % len(mapping)`. Short color names like "Red" (3 chars) always map to index 3, "Blue" to 4, etc. This isn't truly random or meaningful — it just coincidentally picks an asset.
 
 **16. ✅ `_is_aspect_applying` uses a simplified check for Time Lord activations**
@@ -194,7 +194,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **47. No React Error Boundary on the cards page**
 `cards/page.tsx` — There is no `ErrorBoundary` wrapping the cards page. Any uncaught render error (e.g., `card.front` is null unexpectedly) shows a blank white screen with no user-facing message and no way to recover.
 
-**48. Generic error message on horoscope generation failure**
+**48. ✅ Generic error message on horoscope generation failure**
 `cards/page.tsx:168` — On failure, `setError("Failed to generate horoscope. Please try again.")` is shown regardless of whether the failure was a network timeout, an AI server error, a user profile issue, or a rate limit. Different errors should give different guidance.
 
 **49. No loading state indicator during balance fetch**
