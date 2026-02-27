@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 42 / 57 done**
+**Progress: 43 / 57 done**
 
 ---
 
@@ -52,8 +52,8 @@ All improvements found from reading the actual code. Each item includes the exac
 **12. No circuit breaker for Gemini API**
 `horoscope_service.py:425` — If Gemini is down or rate-limited, every request waits for the LangChain `max_retries=3` to exhaust before failing. There's no circuit breaker that trips after N consecutive failures and fast-fails subsequent requests for a cooldown period.
 
-**13. No request tracing / correlation ID**
-`horoscope_routes.py:38` — Each request logs `DOB=..., Lat=..., Lon=...` but there is no request ID that links the incoming log to the AI call log to the cache miss log. Tracing a specific user's failed generation requires searching by DOB which is not unique.
+**13. ✅ No request tracing / correlation ID**
+`horoscope_routes.py:38` — Added CorrelationIdMiddleware that reads X-Request-ID from the backend or generates UUID. Stored in ContextVar, echoed in response header, and included in route log lines.
 
 ---
 
