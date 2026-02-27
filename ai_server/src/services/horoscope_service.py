@@ -326,7 +326,6 @@ class HoroscopeService:
         """
         # Check cache first
         if use_cache:
-            cache_key = f"{dob}_{birth_time}_{latitude}_{longitude}"
             cached = cache_service.get(dob, birth_time, birth_place)
             if cached:
                 return json.loads(cached), True, "cdo"
