@@ -1,8 +1,11 @@
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { AppState } from "@/types";
 
-export const useStore = create<AppState>((set) => ({
+export const useStore = create<AppState>()(
+  persist(
+	(set) => ({
 	wallet: null,
 	user: null,
 	card: null, // New format: single card
@@ -45,4 +48,17 @@ export const useStore = create<AppState>((set) => ({
 			cards: null,
 			loading: false,
 		}),
-}));
+  }),
+  {
+    name: "hastrology-session",
+    storage: createJSONStorage(() => sessionStorage),
+    // Only persist the card, user, and wallet — not loading/balance/UI flags.
+    // sessionStorage is cleared on tab close, which is appropriate for
+    // wallet-scoped data that shouldn't survive a fresh browser session.
+    partialize: (state) => ({
+      card: state.card,
+      user: state.user,
+      wallet: state.wallet,
+    }),
+  }
+));
