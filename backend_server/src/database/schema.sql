@@ -143,6 +143,12 @@ END $$;
 -- Index on verified for fast "show all unverified horoscopes today" queries.
 CREATE INDEX IF NOT EXISTS idx_horoscopes_verified ON horoscopes(verified);
 
+-- Migration: Enforce YYYY-MM-DD format on users.dob at the database level.
+-- The birthDetailsUpdateSchema Joi validator already requires this pattern,
+-- but a CHECK constraint prevents any direct inserts that bypass the API.
+ALTER TABLE users ADD CONSTRAINT IF NOT EXISTS users_dob_format
+  CHECK (dob IS NULL OR dob ~ '^\d{4}-\d{2}-\d{2}$');
+
 -- Migration: Enforce user_id NOT NULL on horoscopes.
 -- user_id is a FK to users(id) but currently allows NULL, meaning the relation
 -- is unenforced for old rows. Steps:
