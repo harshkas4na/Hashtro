@@ -6,6 +6,7 @@ from ..models.request_models import HoroscopeRequest
 from ..models.response_models import HoroscopeResponse, AstroCard
 from ..services.horoscope_service import horoscope_service
 from ..config.logger import logger
+from ..middleware.correlation_id import request_id_var
 
 router = APIRouter()
 
@@ -35,7 +36,8 @@ async def generate_horoscope(request: HoroscopeRequest):
         HTTPException: If horoscope generation fails
     """
     try:
-        logger.info(f"CDO Horoscope request: DOB={request.dob}, Lat={request.latitude}, Lon={request.longitude}, X=@{request.x_handle}")
+        req_id = request_id_var.get()
+        logger.info(f"CDO Horoscope request: DOB={request.dob}, Lat={request.latitude}, Lon={request.longitude}, X=@{request.x_handle}, requestId={req_id}")
         
         card_data, was_cached, generation_mode = await horoscope_service.generate_horoscope(
             dob=request.dob,
@@ -53,7 +55,7 @@ async def generate_horoscope(request: HoroscopeRequest):
         # Convert raw card data to AstroCard model
         card = AstroCard(**card_data)
         
-        logger.info(f"Generated horoscope (mode={generation_mode}, cached={was_cached})")
+        logger.info(f"Generated horoscope (mode={generation_mode}, cached={was_cached}, requestId={req_id})")
         
         return HoroscopeResponse(
             card=card,

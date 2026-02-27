@@ -18,6 +18,7 @@ from src.middleware.error_handler import (
     general_exception_handler
 )
 from src.middleware.rate_limiter import limiter, _rate_limit_exceeded_handler
+from src.middleware.correlation_id import CorrelationIdMiddleware
 from src.services.cache_service import cache_service
 
 # How often (in seconds) the background task sweeps for expired cache entries
@@ -68,6 +69,10 @@ app = FastAPI(
 # Add rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Correlation ID — reads X-Request-ID from backend or generates a new UUID.
+# Must be added after exception handlers so the header is set even on errors.
+app.add_middleware(CorrelationIdMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
