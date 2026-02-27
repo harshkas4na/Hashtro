@@ -125,7 +125,7 @@ revoked        BOOLEAN  — set to true to permanently invalidate the key
 ```bash
 curl -X POST http://localhost:5001/api/agent/keys \
   -H "Content-Type: application/json" \
-  -d '{"walletAddress": "YOUR_SOLANA_WALLET", "label": "Test Agent"}'
+  -d '{"walletAddress": "4RBN5JLrqTFRbuatJgoxKcBKnpxMWq4U98rGyDxFB6e2", "label": "Test Agent"}'
 ```
 
 Response:
@@ -142,7 +142,7 @@ Response:
 ### 2. List keys (masked — safe to display in UI)
 
 ```bash
-curl http://localhost:5001/api/agent/keys/YOUR_SOLANA_WALLET
+curl http://localhost:5001/api/agent/keys/4RBN5JLrqTFRbuatJgoxKcBKnpxMWq4U98rGyDxFB6e2
 ```
 
 Response:
