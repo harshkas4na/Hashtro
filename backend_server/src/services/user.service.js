@@ -313,6 +313,8 @@ class UserService {
     try {
       logger.info("Updating trade time for user:", { walletAddress });
 
+      // Update the "last trade" shortcut on the users row (kept for fast
+      // "did the user trade today?" checks in HoroscopeReveal).
       const { data, error } = await this.supabase
         .from("users")
         .update({
@@ -326,6 +328,22 @@ class UserService {
       if (error) {
         logger.error("Trade time update error:", error);
         throw error;
+      }
+
+      // Insert a permanent history record so we never lose past trades.
+      // The horoscope_date is today's UTC date (the day the horoscope was
+      // generated for). Non-fatal on failure — don't let a failed INSERT
+      // roll back the user-facing trade confirmation.
+      const todayUtc = new Date().toISOString().slice(0, 10);
+      const { error: tradeInsertError } = await this.supabase
+        .from("trades")
+        .insert({
+          wallet_address: walletAddress,
+          horoscope_date: todayUtc,
+          traded_at: tradeMadeAt.toISOString(),
+        });
+      if (tradeInsertError) {
+        logger.warn("Failed to insert trade history record (non-fatal):", tradeInsertError);
       }
 
       logger.info("Trade time updated successfully:", {

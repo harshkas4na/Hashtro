@@ -162,6 +162,31 @@ ALTER TABLE users ADD CONSTRAINT IF NOT EXISTS users_dob_format
 --     AND h.user_id IS NULL;
 -- ALTER TABLE horoscopes ALTER COLUMN user_id SET NOT NULL;
 
+-- Migration: trade history table.
+-- trade_made_at on users is overwritten on every trade — there is no history.
+-- This dedicated table stores each individual trade event so we can show users
+-- their full trade history and compute streaks / statistics.
+CREATE TABLE IF NOT EXISTS trades (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  wallet_address TEXT NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+  horoscope_date DATE NOT NULL,  -- the horoscope day this trade was made for
+  traded_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trades_wallet_date ON trades(wallet_address, horoscope_date);
+CREATE INDEX IF NOT EXISTS idx_trades_wallet      ON trades(wallet_address);
+
+-- RLS: service role full access; no anon read needed (backend always proxies)
+ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role has full access to trades"
+  ON trades
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
 -- Migration: Soft deletes for users and horoscopes.
 -- Adds a deleted_at timestamp column. NULL = active; non-NULL = soft-deleted.
 -- Hard DELETE is replaced by UPDATE deleted_at = NOW() in the API.
