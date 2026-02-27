@@ -17,7 +17,7 @@ import { TradeResults } from "@/components/TradeResults";
 import { UserXDetails } from "@/components/TwitterDetails";
 import { TradeModal } from "@/components/trade-modal";
 import { WalletDropdown } from "@/components/wallet-dropdown";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useStore } from "@/store/useStore";
 import { usePrivyWallet } from "../hooks/use-privy-wallet";
 
@@ -76,8 +76,19 @@ const CardsPage: FC = () => {
 			setCurrentScreen("reveal");
 		} catch (genErr) {
 			console.error("Error generating horoscope:", genErr);
-			setError("Failed to generate horoscope. Please try again.");
-			// Stay on error screen
+			if (genErr instanceof ApiError) {
+				if (genErr.status === 429) {
+					setError("Too many requests. The cosmos need a moment — please try again shortly.");
+				} else if (genErr.status === 503 || genErr.status === 502) {
+					setError("The AI oracle is temporarily unreachable. Please try again in a minute.");
+				} else if (genErr.status >= 400 && genErr.status < 500) {
+					setError(genErr.message || "Something went wrong with your request. Please try again.");
+				} else {
+					setError("A server error occurred while reading the stars. Please try again.");
+				}
+			} else {
+				setError("Connection lost. Check your internet and try again.");
+			}
 		} finally {
 			setLoading(false);
 		}
