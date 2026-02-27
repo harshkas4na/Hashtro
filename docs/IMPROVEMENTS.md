@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 55 / 57 done**
+**Progress: 51 / 57 done**
 
 ---
 
@@ -116,8 +116,8 @@ Running this file as-is would fail with a syntax error for those three columns.
 **27. ✅ No `trade_attempts` tracking on horoscopes**
 Added `trade_attempts INTEGER DEFAULT 0` column to horoscopes. Added `increment_trade_attempts(p_wallet, p_date)` Postgres RPC for atomic increment. Backend increments before on-chain check so every attempt is counted, including rejected ones.
 
-**28. `trade_made_at` on users captures only the last trade**
-`schema.sql:124` — `trade_made_at` is a single timestamp on the users table — overwritten on every trade. There is no trade history at all beyond "when did they last trade".
+**28. ✅ `trade_made_at` on users captures only the last trade**
+Added `trades` table (wallet_address, horoscope_date, traded_at, created_at) with indexes and RLS. `updateTradeTime` now inserts into `trades` after updating `users.trade_made_at`. Insert failure is non-fatal so it never blocks the user.
 
 **29. ✅ No soft deletes**
 Added `deleted_at TIMESTAMP WITH TIME ZONE` to both `users` and `horoscopes`. Added partial indexes `idx_users_active` and `idx_horoscopes_active` covering only rows where `deleted_at IS NULL`.
