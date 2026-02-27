@@ -413,6 +413,22 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 							<p className="text-center mt-4 text-[10px] sm:text-xs text-white/40">
 								Minimum (0.04 SOL) required • Profits are yours to keep
 							</p>
+
+							{/* Flash.trade CTA */}
+							<a
+								href="https://www.flash.trade/?referral=HASHTRO"
+								target="_blank"
+								rel="noopener noreferrer"
+								onClick={(e) => e.stopPropagation()}
+								className="flex items-center justify-center gap-1.5 mt-4 text-[11px] text-white/30 hover:text-white/60 transition-colors group"
+							>
+								<span>⚡</span>
+								<span>Want to trade more perps?</span>
+								<span className="text-[#d4a017]/60 group-hover:text-[#f5c842] transition-colors underline underline-offset-2 decoration-dotted">
+									Try Flash.trade
+								</span>
+								<span className="group-hover:translate-x-0.5 transition-transform">↗</span>
+							</a>
 						</div>
 
 						{/* ==================== BACK FACE ==================== */}

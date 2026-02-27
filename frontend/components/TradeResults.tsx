@@ -385,6 +385,24 @@ export const TradeResults: FC<TradeResultsProps> = ({
 				</p>
 
 
+				{/* Flash.trade CTA */}
+				<a
+					href="https://www.flash.trade/?referral=HASHTRO"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="flex items-center justify-between mt-6 px-5 py-4 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-[#d4a017]/40 hover:bg-[#d4a017]/[0.06] transition-all group"
+				>
+					<div className="flex flex-col gap-0.5">
+						<span className="text-xs text-white/40 uppercase tracking-widest">
+							Trade more perps
+						</span>
+						<span className="text-sm font-semibold text-white/80 group-hover:text-white transition-colors">
+							Try Flash.trade ↗
+						</span>
+					</div>
+					<span className="text-2xl">⚡</span>
+				</a>
+
 				<button
 					onClick={onReturnHome}
 					className="w-full mt-5 py-3.5 text-sm text-white/50 hover:text-white transition-colors"
