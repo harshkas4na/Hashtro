@@ -180,10 +180,21 @@ export interface User {
 	twitterId?: string;
 	twitterProfileUrl?: string;
 	twitterUsername?: string;
-	twitterAccessToken?: string;
-	twitterRefreshToken?: string;
-	twitterTokenExpiresAt?: string;
 	tradeMadeAt?: string;
+	// OAuth tokens are intentionally excluded — the server no longer returns them.
+}
+
+export interface HistoryEntry {
+	date: string;
+	horoscopeText: string;
+	verified: boolean;
+	createdAt: string;
+}
+
+export interface HistoryResponse {
+	count: number;
+	next_cursor: string | null;
+	horoscopes: HistoryEntry[];
 }
 
 export interface AppState {

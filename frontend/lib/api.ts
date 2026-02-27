@@ -2,10 +2,12 @@ import {
 	AstroCard,
 	BirthDetails,
 	CardType,
+	HistoryResponse,
 	HoroscopeResponse,
 	HoroscopeStatus,
 	TradeTimeData,
 	UpdateBirth,
+	User,
 	XDetails,
 } from "@/types";
 
@@ -38,7 +40,7 @@ export const api = {
 	/**
 	 * Get user profile by wallet address
 	 */
-	async getUserProfile(walletAddress: string) {
+	async getUserProfile(walletAddress: string): Promise<{ user: User } | null> {
 		const res = await fetch(`${API_BASE}/user/profile/${walletAddress}`);
 
 		if (!res.ok) {
@@ -54,7 +56,7 @@ export const api = {
 	/**
 	 * Register a new user with birth details
 	 */
-	async registerUser(data: BirthDetails) {
+	async registerUser(data: BirthDetails): Promise<{ user: User }> {
 		const res = await fetch(`${API_BASE}/user/register`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -106,7 +108,7 @@ export const api = {
 	/**
 	 * Get horoscope history
 	 */
-	async getHistory(walletAddress: string, limit = 10) {
+	async getHistory(walletAddress: string, limit = 10): Promise<HistoryResponse> {
 		const res = await fetch(
 			`${API_BASE}/horoscope/history/${walletAddress}?limit=${limit}`,
 		);
@@ -142,7 +144,7 @@ export const api = {
 	/**
 	 * Add twitter details to an existing user
 	 */
-	async registerX(data: XDetails) {
+	async registerX(data: XDetails): Promise<{ user: User }> {
 		const res = await fetch(`${API_BASE}/user/x-account`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -160,11 +162,11 @@ export const api = {
 	 * Update Twitter OAuth tokens for a user
 	 */
 	async updateTwitterTokens(data: {
-		walletAddress: string; // Changed from userId
+		walletAddress: string;
 		accessToken: string;
 		refreshToken: string;
 		expiresAt: string;
-	}) {
+	}): Promise<{ message: string }> {
 		const res = await fetch(`${API_BASE}/user/twitter-tokens`, {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
@@ -181,7 +183,7 @@ export const api = {
 	/**
 	 * Update birth details for a user
 	 */
-	async updateBirthDetails(data: UpdateBirth) {
+	async updateBirthDetails(data: UpdateBirth): Promise<{ user: User }> {
 		const res = await fetch(`${API_BASE}/user/birth-details`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -198,7 +200,7 @@ export const api = {
 	/**
 	 * Add or update trade timestamp for a user
 	 */
-	async addTradeTime(data: TradeTimeData) {
+	async addTradeTime(data: TradeTimeData): Promise<{ message: string }> {
 		const res = await fetch(`${API_BASE}/user/trade-time`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
