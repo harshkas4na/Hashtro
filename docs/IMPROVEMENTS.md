@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 28 / 57 done**
+**Progress: 33 / 57 done**
 
 ---
 
@@ -110,7 +110,7 @@ Running this file as-is would fail with a syntax error for those three columns.
 **25. `dob` stored as TEXT with no format enforcement**
 `schema.sql:12` — `dob TEXT` accepts any string. The service accepts multiple date formats (`April 20, 1995`, `1995-04-20`, `20/04/1995`). This makes date-based queries impossible and means two registrations of the same user with different formats store different strings.
 
-**26. `horoscope_text` column stores full JSON as TEXT**
+**26. ✅ `horoscope_text` column stores full JSON as TEXT**
 `schema.sql:35` — The card JSON (a rich structured object with front, back, lucky_assets, cdo_summary, etc.) is stored as a TEXT string. Using `JSONB` would allow querying inside the card (e.g., `WHERE horoscope_text->>'luck_score' > 70`), indexing, and compression.
 
 **27. No `trade_attempts` tracking on horoscopes**
@@ -138,7 +138,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **33. ✅ No request correlation ID**
 `backend_server/index.js` — No middleware attaches a `X-Request-ID` header or correlation ID to requests. Matching a backend log entry to an AI server log entry for the same user request requires searching by wallet address and timestamp.
 
-**34. Date calculation locked to IST (Asia/Kolkata)**
+**34. ✅ Date calculation locked to IST (Asia/Kolkata)**
 `horoscope.service.js:19` — `getTodayDateString()` hardcodes `timeZone: 'Asia/Kolkata'`. For a global product, whether "today" is Feb 27 or Feb 28 depends entirely on the server's IST clock, not the user's timezone. A user in the US might be on Feb 27 while IST is already Feb 28, giving them tomorrow's "slot" prematurely.
 
 **35. ✅ Twitter data is re-fetched on every horoscope generation even though it rarely changes**
@@ -203,7 +203,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **50. Hardcoded public RPC endpoint**
 `cards/page.tsx:127` — `"https://solana-rpc.publicnode.com"` is a public free RPC. It has rate limits, no uptime SLA, and is shared with all other users of the public node. For a trading product, this needs a dedicated paid RPC (Helius, QuickNode, Alchemy).
 
-**51. Zustand store not persisted across page refreshes**
+**51. ✅ Zustand store not persisted across page refreshes**
 `useStore` — The store holds `card`, `wallet`, and `user`. On a page refresh, the store is empty and the app makes full API calls again (profile check + horoscope status + generation). Persisting the card to `sessionStorage` via `zustand/middleware`'s `persist` would make refreshes instant.
 
 **52. No sharing flow for the horoscope card**
@@ -212,7 +212,7 @@ The card has a `front` with a shareable `tagline`, `hook_1`, `hook_2`, and `vibe
 **53. ✅ Flash service failure is silent to the user**
 `cards/page.tsx:136-143` — If Flash service initialization fails, the error is logged to console and `flashService` stays `null`. The user sees no indication. When they click "Verify Trade", the button would be active but the trade would silently fail. Should show a banner: "Flash trading unavailable. Please refresh."
 
-**54. `wasConnected` ref logic could miss wallet switch**
+**54. ✅ `wasConnected` ref logic could miss wallet switch**
 `cards/page.tsx:151-156` — `wasConnected` tracks whether the wallet was ever connected. If a user disconnects and reconnects with a **different** wallet, `hasCheckedRef.current` is reset on disconnect (line 179: `hasCheckedRef.current = false`) — but only because `!connected || !publicKey`. If Privy keeps `connected=true` during wallet switch and just changes `publicKey`, the status check for the new wallet might not re-run.
 
 ---
@@ -222,7 +222,7 @@ The card has a `front` with a shareable `tagline`, `hook_1`, `hook_2`, and `vibe
 **55. Schema file is not kept in sync with actual DB state**
 `schema.sql` defines the initial schema plus one `ALTER TABLE` at the bottom for `trade_made_at`. Any future column additions would need separate ALTER statements. There's no migration history — you can't tell what the current state of a production DB is just from this file. Should use a migration tool (e.g., Supabase migrations, or at minimum numbered migration files).
 
-**56. No index on `horoscopes.verified`**
+**56. ✅ No index on `horoscopes.verified`**
 `schema.sql` — There's an index on `(wallet_address, date)` but none on `verified`. Any query filtering by `verified = false` (e.g., "show me all unverified horoscopes today") does a full table scan.
 
 **57. `user_id` on horoscopes can be NULL**
