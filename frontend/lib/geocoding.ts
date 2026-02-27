@@ -56,7 +56,7 @@ export async function geocodePlace(placeName: string): Promise<GeocodingResult> 
         }
 
         const result = data[0];
-        
+
         return {
             latitude: parseFloat(result.lat),
             longitude: parseFloat(result.lon),
@@ -114,12 +114,12 @@ export const TIMEZONE_HINTS: Record<string, number> = {
  */
 export function getTimezoneOffset(placeName: string, longitude: number): number {
     const lowerPlace = placeName.toLowerCase();
-    
+
     for (const [hint, offset] of Object.entries(TIMEZONE_HINTS)) {
         if (lowerPlace.includes(hint)) {
             return offset;
         }
     }
-    
+
     return estimateTimezoneOffset(longitude);
 }
