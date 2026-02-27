@@ -3,6 +3,7 @@ In-memory cache service for horoscope responses
 """
 import hashlib
 import time
+from datetime import date
 from typing import Optional, Dict, Tuple
 from ..config.settings import settings
 from ..config.logger import logger
@@ -19,17 +20,22 @@ class CacheService:
     
     def _generate_key(self, dob: str, birth_time: str, birth_place: str) -> str:
         """
-        Generate cache key from birth details
-        
+        Generate cache key from birth details and today's date.
+
+        The date component ensures that cached entries are naturally scoped
+        to the day they were generated, so a 11:55 PM entry is never served
+        as the next day's horoscope even if the TTL hasn't elapsed yet.
+
         Args:
             dob: Date of birth
             birth_time: Time of birth
             birth_place: Place of birth
-            
+
         Returns:
-            MD5 hash of the combined inputs
+            MD5 hash of the combined inputs including today's date
         """
-        combined = f"{dob}|{birth_time}|{birth_place}".lower()
+        today = date.today().isoformat()  # YYYY-MM-DD
+        combined = f"{dob}|{birth_time}|{birth_place}|{today}".lower()
         return hashlib.md5(combined.encode()).hexdigest()
     
     def get(self, dob: str, birth_time: str, birth_place: str) -> Optional[str]:
