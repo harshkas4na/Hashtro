@@ -18,6 +18,7 @@ import { UserXDetails } from "@/components/TwitterDetails";
 import { TradeModal } from "@/components/trade-modal";
 import { WalletDropdown } from "@/components/wallet-dropdown";
 import { api, ApiError } from "@/lib/api";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useStore } from "@/store/useStore";
 import { usePrivyWallet } from "../hooks/use-privy-wallet";
 
@@ -319,4 +320,10 @@ const CardsPage: FC = () => {
 	);
 };
 
-export default CardsPage;
+const CardsPageWithBoundary: FC = () => (
+	<ErrorBoundary>
+		<CardsPage />
+	</ErrorBoundary>
+);
+
+export default CardsPageWithBoundary;
