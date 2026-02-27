@@ -226,6 +226,90 @@ const twitterTokensUpdateSchema = Joi.object({
   }),
 });
 
+/**
+ * Agent key generation validation schema
+ */
+const generateKeySchema = Joi.object({
+  walletAddress: Joi.string()
+    .required()
+    .min(32)
+    .max(44)
+    .pattern(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/)
+    .messages({
+      "string.pattern.base": "Invalid Solana wallet address format",
+      "string.empty": "Wallet address is required",
+      "any.required": "Wallet address is required",
+    }),
+
+  label: Joi.string().min(1).max(50).default("My Agent").messages({
+    "string.min": "Label must be at least 1 character",
+    "string.max": "Label must be at most 50 characters",
+  }),
+}).options({ stripUnknown: true });
+
+/**
+ * Webhook registration validation schema
+ */
+const WEBHOOK_EVENTS = ['horoscope_ready', 'trade_verified', 'trade_failed'];
+
+const webhookRegistrationSchema = Joi.object({
+  url: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .required()
+    .messages({
+      "string.uri": "url must be a valid HTTP or HTTPS URL",
+      "any.required": "url is required",
+    }),
+  events: Joi.array()
+    .items(Joi.string().valid(...WEBHOOK_EVENTS))
+    .min(1)
+    .required()
+    .messages({
+      "array.min": "At least one event must be specified",
+      "any.required": "events is required",
+      "any.only": `events must be one of: ${WEBHOOK_EVENTS.join(', ')}`,
+    }),
+}).options({ stripUnknown: true });
+
+/**
+ * Agent trade-attempt recording validation schema.
+ * Agent calls this when a trade is executed (before knowing profit/loss).
+ */
+const tradeAttemptSchema = Joi.object({
+  txSig: Joi.string().required().min(1).messages({
+    "string.empty": "Transaction signature is required",
+    "any.required": "Transaction signature is required",
+  }),
+  direction: Joi.string().valid("LONG", "SHORT").required().messages({
+    "any.only": "direction must be LONG or SHORT",
+    "any.required": "direction is required",
+  }),
+  leverage: Joi.number().positive().required().messages({
+    "number.positive": "leverage must be a positive number",
+    "any.required": "leverage is required",
+  }),
+  asset: Joi.string().required().min(1).messages({
+    "string.empty": "asset is required",
+    "any.required": "asset is required",
+  }),
+}).options({ stripUnknown: true });
+
+/**
+ * Agent key revocation validation schema
+ */
+const revokeKeySchema = Joi.object({
+  walletAddress: Joi.string()
+    .required()
+    .min(32)
+    .max(44)
+    .pattern(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/)
+    .messages({
+      "string.pattern.base": "Invalid Solana wallet address format",
+      "string.empty": "Wallet address is required",
+      "any.required": "Wallet address is required",
+    }),
+}).options({ stripUnknown: true });
+
 const updateTimeSchema = Joi.object({
   walletAddress: Joi.string()
     .required()
@@ -270,4 +354,8 @@ module.exports = {
   validateTwitterTokensUpdate: validate(twitterTokensUpdateSchema),
   validateBirthDetailsConfirm: validate(birthDetailsUpdateSchema),
   validateAddTimeConfirm: validate(updateTimeSchema),
+  validateGenerateKey: validate(generateKeySchema),
+  validateRevokeKey: validate(revokeKeySchema),
+  validateTradeAttempt: validate(tradeAttemptSchema),
+  validateWebhookRegistration: validate(webhookRegistrationSchema),
 };

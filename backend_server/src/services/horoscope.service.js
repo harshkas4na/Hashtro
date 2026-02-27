@@ -281,6 +281,36 @@ class HoroscopeService {
             return null;
         }
     }
+
+    /**
+     * Record that a trade was executed for today's horoscope.
+     * Increments trade_attempts (via existing RPC) and stamps last_trade_attempt_at.
+     * Called by the agent trade-attempt endpoint when the agent observes a trade.
+     *
+     * @param {string} walletAddress
+     * @returns {Promise<{ trade_attempts: number, last_trade_attempt_at: string }>}
+     */
+    async recordTradeAttempt(walletAddress) {
+        const today = this.getTodayDateString();
+        const now   = new Date().toISOString();
+
+        // Atomic increment via existing RPC
+        const newCount = await this.incrementTradeAttempts(walletAddress);
+
+        // Stamp last_trade_attempt_at — non-atomic follow-up, acceptable here
+        const { error } = await this.supabase
+            .from('horoscopes')
+            .update({ last_trade_attempt_at: now })
+            .eq('wallet_address', walletAddress)
+            .eq('date', today);
+
+        if (error) {
+            logger.warn('recordTradeAttempt: failed to set last_trade_attempt_at (non-fatal):', error.message);
+        }
+
+        logger.info('Trade attempt recorded', { walletAddress, date: today, newCount });
+        return { trade_attempts: newCount, last_trade_attempt_at: now };
+    }
 }
 
 module.exports = new HoroscopeService();

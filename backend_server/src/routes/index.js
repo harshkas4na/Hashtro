@@ -1,6 +1,7 @@
 const express = require('express');
 const userRoutes = require('./user.routes');
 const horoscopeRoutes = require('./horoscope.routes');
+const agentRoutes = require('./agent.routes');
 
 const router = express.Router();
 
@@ -20,6 +21,7 @@ router.get('/health', (req, res) => {
  */
 router.use('/user', userRoutes);
 router.use('/horoscope', horoscopeRoutes);
+router.use('/agent', agentRoutes);
 
 /**
  * Debug routes — only available in development/test environments.
