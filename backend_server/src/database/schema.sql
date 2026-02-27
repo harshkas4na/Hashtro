@@ -67,50 +67,58 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE horoscopes ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role to do everything (for backend server)
-CREATE POLICY "Service role has full access to users"
-  ON users
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'users' AND policyname = 'Service role has full access to users'
+  ) THEN
+    CREATE POLICY "Service role has full access to users"
+      ON users FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
-CREATE POLICY "Service role has full access to horoscopes"
-  ON horoscopes
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'horoscopes' AND policyname = 'Service role has full access to horoscopes'
+  ) THEN
+    CREATE POLICY "Service role has full access to horoscopes"
+      ON horoscopes FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
 -- Allow anonymous users to read their own data (if using auth)
-CREATE POLICY "Users can read their own user data"
-  ON users
-  FOR SELECT
-  TO anon
-  USING (wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'users' AND policyname = 'Users can read their own user data'
+  ) THEN
+    CREATE POLICY "Users can read their own user data"
+      ON users FOR SELECT TO anon
+      USING (wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address');
+  END IF;
+END $$;
 
-CREATE POLICY "Users can read their own horoscopes"
-  ON horoscopes
-  FOR SELECT
-  TO anon
-  USING (wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'horoscopes' AND policyname = 'Users can read their own horoscopes'
+  ) THEN
+    CREATE POLICY "Users can read their own horoscopes"
+      ON horoscopes FOR SELECT TO anon
+      USING (wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address');
+  END IF;
+END $$;
 
--- Create a view for easier querying
-CREATE OR REPLACE VIEW user_horoscopes AS
-SELECT
-  h.id,
-  h.wallet_address,
-  h.date,
-  h.horoscope_text,
-  h.verified,
-  h.created_at,
-  u.dob,
-  u.birth_time,
-  u.birth_place
-FROM horoscopes h
-JOIN users u ON h.wallet_address = u.wallet_address;
-
--- Grant access to the view
-GRANT SELECT ON user_horoscopes TO anon, service_role;
+-- Drop view now so the JSONB migration below can alter horoscope_text freely.
+-- It is recreated after the migration.
+DROP VIEW IF EXISTS user_horoscopes;
 
 -- Success message
 DO $$
@@ -139,6 +147,23 @@ BEGIN
     RAISE NOTICE 'horoscope_text is already JSONB — skipping migration';
   END IF;
 END $$;
+
+-- Recreate view now that horoscope_text is JSONB.
+CREATE OR REPLACE VIEW user_horoscopes AS
+SELECT
+  h.id,
+  h.wallet_address,
+  h.date,
+  h.horoscope_text,
+  h.verified,
+  h.created_at,
+  u.dob,
+  u.birth_time,
+  u.birth_place
+FROM horoscopes h
+JOIN users u ON h.wallet_address = u.wallet_address;
+
+GRANT SELECT ON user_horoscopes TO anon, service_role;
 
 -- Index on verified for fast "show all unverified horoscopes today" queries.
 CREATE INDEX IF NOT EXISTS idx_horoscopes_verified ON horoscopes(verified);
@@ -188,12 +213,18 @@ CREATE INDEX IF NOT EXISTS idx_trades_wallet      ON trades(wallet_address);
 -- RLS: service role full access; no anon read needed (backend always proxies)
 ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Service role has full access to trades"
-  ON trades
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'trades'
+      AND policyname = 'Service role has full access to trades'
+  ) THEN
+    CREATE POLICY "Service role has full access to trades"
+      ON trades FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
 -- Migration: Soft deletes for users and horoscopes.
 -- Adds a deleted_at timestamp column. NULL = active; non-NULL = soft-deleted.
