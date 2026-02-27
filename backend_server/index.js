@@ -9,6 +9,7 @@ const { getConfig, validateEnv } = require('./src/config/environment');
 const { testConnection } = require('./src/config/supabase');
 const logger = require('./src/config/logger');
 const requestLogger = require('./src/middleware/requestLogger');
+const correlationId = require('./src/middleware/correlationId');
 const { errorHandler, notFoundHandler } = require('./src/middleware/errorHandler');
 const routes = require('./src/routes');
 
@@ -32,6 +33,12 @@ try {
 }
 
 const config = getConfig();
+
+/**
+ * Correlation ID — attach before any other middleware so every log line
+ * can include req.requestId to trace a request end-to-end.
+ */
+app.use(correlationId);
 
 /**
  * Security middleware
