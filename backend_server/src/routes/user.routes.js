@@ -5,7 +5,8 @@ const {
   validateTwitterConfirm,
   validateTwitterTokensUpdate,
   validateBirthDetailsConfirm,
-  validateAddTimeConfirm
+  validateAddTimeConfirm,
+  validateWalletParam,
 } = require("../middleware/validation");
 const { authLimiter } = require("../middleware/rateLimiter");
 
@@ -52,7 +53,7 @@ router.patch(
  * @desc    Get user profile by wallet address
  * @access  Public
  */
-router.get("/profile/:walletAddress", userController.getProfile);
+router.get("/profile/:walletAddress", validateWalletParam, userController.getProfile);
 
 /**
  * @route   POST /api/user/birth-details

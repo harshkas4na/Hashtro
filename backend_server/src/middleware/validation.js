@@ -245,8 +245,24 @@ const updateTimeSchema = Joi.object({
   }),
 }).options({ stripUnknown: true });
 
+/**
+ * Validate a Solana wallet address supplied as a URL parameter.
+ * Usage: router.get('/profile/:walletAddress', validateWalletParam, controller)
+ */
+const SOLANA_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+const validateWalletParam = (req, res, next) => {
+  const { walletAddress } = req.params;
+  if (!walletAddress || !SOLANA_ADDRESS_RE.test(walletAddress)) {
+    logger.warn("Invalid walletAddress param:", walletAddress);
+    return errorResponse(res, "Invalid Solana wallet address format", 400);
+  }
+  next();
+};
+
 module.exports = {
   validate,
+  validateWalletParam,
   validateUserRegistration: validate(userRegistrationSchema),
   validateHoroscopeConfirm: validate(horoscopeConfirmSchema),
   validateHoroscopeVerify: validate(horoscopeVerifySchema),
