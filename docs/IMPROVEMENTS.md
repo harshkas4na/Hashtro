@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 11 / 57 done**
+**Progress: 24 / 57 done**
 
 ---
 
@@ -59,13 +59,13 @@ All improvements found from reading the actual code. Each item includes the exac
 
 ### Quality
 
-**14. Fallback card hardcodes "Mercury retrograde in the cosmic servers"**
+**14. ✅ Fallback card hardcodes "Mercury retrograde in the cosmic servers"**
 `horoscope_service.py:542` — The fallback card text is a fixed joke string. Users who hit the fallback always see the exact same message. Should at least vary the time_lord-based message based on the calculated time lord.
 
 **15. Fallback color selection via `len(color) % len(mapping)`**
 `horoscope_service.py:479` — When the AI hallucinates a color not in the asset mapping, the fallback picks a color using `len(color) % len(mapping)`. Short color names like "Red" (3 chars) always map to index 3, "Blue" to 4, etc. This isn't truly random or meaningful — it just coincidentally picks an asset.
 
-**16. `_is_aspect_applying` uses a simplified check for Time Lord activations**
+**16. ✅ `_is_aspect_applying` uses a simplified check for Time Lord activations**
 `astro_calculator.py:386` — In `detect_time_lord_activations`, `is_applying = transit_speed != 0` is used as the applying check, which is always `True` for any moving planet. The actual applying/separating calculation from `_is_aspect_applying` (which compares current vs future orb) is not called here.
 
 **17. `random` imported but only used in fallback**
@@ -86,10 +86,10 @@ All routes are publicly accessible with no JWT or API key check. Anyone who know
 **20. `SELECT *` exposes OAuth tokens in every user fetch**
 `user.service.js:178` — `findUserByWallet` runs `select("*")` which returns `twitter_access_token` and `twitter_refresh_token` in every response. These tokens end up in the full user object that gets passed into `horoscopeController.confirm()`, logged in places, and returned in profiles. Should select only the columns needed per operation.
 
-**21. `GET /api/user/profile/:walletAddress` has no input validation**
+**21. ✅ `GET /api/user/profile/:walletAddress` has no input validation**
 `user.routes.js:55` — The profile endpoint takes `walletAddress` directly from URL params with no validation middleware. The horoscope routes validate wallet format with a Joi regex but the profile route does not.
 
-**22. Debug routes registered without environment guard**
+**22. ✅ Debug routes registered without environment guard**
 `backend_server/src/routes/index.js` (implied by debug.routes.js existing) — The debug routes are registered regardless of environment. If they expose internal state or bypass limits, they are a risk in production.
 
 **23. `verifyTransaction` does not confirm the trade was from the claimed wallet**
@@ -135,13 +135,13 @@ Both `users` and `horoscopes` have no `deleted_at` column. Deleting a user casca
 **32. ✅ No backend health check endpoint**
 There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness probes, load balancers, and uptime monitors have nothing to check.
 
-**33. No request correlation ID**
+**33. ✅ No request correlation ID**
 `backend_server/index.js` — No middleware attaches a `X-Request-ID` header or correlation ID to requests. Matching a backend log entry to an AI server log entry for the same user request requires searching by wallet address and timestamp.
 
 **34. Date calculation locked to IST (Asia/Kolkata)**
 `horoscope.service.js:19` — `getTodayDateString()` hardcodes `timeZone: 'Asia/Kolkata'`. For a global product, whether "today" is Feb 27 or Feb 28 depends entirely on the server's IST clock, not the user's timezone. A user in the US might be on Feb 27 while IST is already Feb 28, giving them tomorrow's "slot" prematurely.
 
-**35. Twitter data is re-fetched on every horoscope generation even though it rarely changes**
+**35. ✅ Twitter data is re-fetched on every horoscope generation even though it rarely changes**
 `horoscope.controller.js:106` — `twitterService.getEnrichedXContext(user)` makes 2 Twitter API calls (profile + tweets) on every horoscope generation. Twitter context (bio, recent tweets) doesn't change minute to minute. Should be cached for at least 1-6 hours per user.
 
 **36. No pagination on history endpoint**
@@ -153,19 +153,19 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 
 ### Bugs
 
-**37. `deriveDirection` always returns "SHORT" in practice**
+**37. ✅ `deriveDirection` always returns "SHORT" in practice**
 `cards/page.tsx:37-51` — `deriveDirection(vibeStatus)` checks if the vibe_status string contains words like "confident", "optimistic", "energetic". But the actual vibe_status values the AI returns are `"Stellar"`, `"Ascending"`, `"Shaky"`, `"Eclipse"` — none of which contain those keywords. So this function always returns `"SHORT"`. The `TradeModal` correctly uses `card.front.luck_score > 50` directly, making `tradeParams.direction` dead code.
 
 **38. Leverage derived from lucky number, not max_leverage**
 `cards/page.tsx:88` — `leverage: Math.min(Math.max(luckyNumber, 2), 50)` where `luckyNumber` is parsed from `card.back.lucky_assets.number` (a string like "7" or "11"). The card already has `card.back.lucky_assets.max_leverage` which is the asset-specific leverage ceiling. The lucky number (a numerology value, could be 99) is being used as a leverage multiplier when it was never intended for that.
 
-**39. `tradeParams` memo is computed but largely unused**
+**39. ✅ `tradeParams` memo is computed but largely unused**
 `cards/page.tsx:84-92` — `tradeParams` is used only as a truthiness guard on line 392 (`if (currentScreen === "execute" && card && tradeParams)`). Its `.direction` and `.leverage` values are not consumed by `TradeModal`. `TradeModal` receives `direction` computed directly inline. The memo can be simplified to just checking if `card` exists.
 
-**40. Two separate `Connection` objects created for same RPC endpoint**
+**40. ✅ Two separate `Connection` objects created for same RPC endpoint**
 `cards/page.tsx:125-130` and `cards/page.tsx:239-241` — The Flash service initialization and the balance polling each create their own `new Connection(endpoint, "confirmed")` independently. These should share a single stable connection instance, ideally created once outside the component or in a context.
 
-**41. New `Connection` instantiated on every balance poll tick**
+**41. ✅ New `Connection` instantiated on every balance poll tick**
 `cards/page.tsx:239-241` — Inside the `fetchBalance` function which runs every 30 seconds, `new Connection(...)` is called fresh every tick. Creating a Connection object is expensive (it initializes internal state and possibly opens a WebSocket). The connection should be created once and reused across polls.
 
 ---
@@ -175,7 +175,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **42. ✅ `api.regsiterX` typo in method name**
 `api.ts:125` — The method is spelled `regsiterX` instead of `registerX`. Any TypeScript consumer using autocomplete gets the wrong name.
 
-**43. API error handling loses HTTP status codes**
+**43. ✅ API error handling loses HTTP status codes**
 `api.ts:41-46` and throughout — All API methods do `throw new Error(error.message || "...")`. This loses the HTTP status code (404, 409, 503, etc.). Callers cannot distinguish "user not found" from "server error" without string-matching on error messages, which is fragile.
 
 **44. No TypeScript types on API success responses**
@@ -209,7 +209,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **52. No sharing flow for the horoscope card**
 The card has a `front` with a shareable `tagline`, `hook_1`, `hook_2`, and `vibe_status` — explicitly designed to be shared publicly. But there is no "Share on X" button that composes a tweet from these fields. The `UserXDetails` component shows Twitter info but there's no share CTA anywhere on the reveal or results screen.
 
-**53. Flash service failure is silent to the user**
+**53. ✅ Flash service failure is silent to the user**
 `cards/page.tsx:136-143` — If Flash service initialization fails, the error is logged to console and `flashService` stays `null`. The user sees no indication. When they click "Verify Trade", the button would be active but the trade would silently fail. Should show a banner: "Flash trading unavailable. Please refresh."
 
 **54. `wasConnected` ref logic could miss wallet switch**
