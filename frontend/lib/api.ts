@@ -11,6 +11,29 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
 
+/** Error thrown by api.* methods; carries the HTTP status so callers can
+ *  distinguish 404 Not Found from 429 Rate Limit from 500 Server Error. */
+export class ApiError extends Error {
+	status: number;
+	constructor(message: string, status: number) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+	}
+}
+
+/** Parse an error response body and throw an ApiError with the status code. */
+async function throwApiError(res: Response, fallback: string): Promise<never> {
+	let message = fallback;
+	try {
+		const body = await res.json();
+		if (body?.message) message = body.message;
+	} catch {
+		// body isn't JSON — use fallback
+	}
+	throw new ApiError(message, res.status);
+}
+
 export const api = {
 	/**
 	 * Get user profile by wallet address
@@ -22,7 +45,7 @@ export const api = {
 			if (res.status === 404) {
 				return null; // User not found
 			}
-			throw new Error("Failed to get user profile");
+			await throwApiError(res, "Failed to get user profile");
 		}
 
 		return res.json();
@@ -39,8 +62,7 @@ export const api = {
 		});
 
 		if (!res.ok) {
-			const error = await res.json();
-			throw new Error(error.message || "Failed to register user");
+			await throwApiError(res, "Failed to register user");
 		}
 
 		return res.json();
@@ -55,7 +77,7 @@ export const api = {
 		);
 
 		if (!res.ok) {
-			throw new Error("Failed to get horoscope status");
+			await throwApiError(res, "Failed to get horoscope status");
 		}
 
 		return res.json();
@@ -75,8 +97,7 @@ export const api = {
 		});
 
 		if (!res.ok) {
-			const error = await res.json();
-			throw new Error(error.message || "Failed to generate horoscope");
+			await throwApiError(res, "Failed to generate horoscope");
 		}
 
 		return res.json();
@@ -91,7 +112,7 @@ export const api = {
 		);
 
 		if (!res.ok) {
-			throw new Error("Failed to get horoscope history");
+			await throwApiError(res, "Failed to get horoscope history");
 		}
 
 		return res.json();
@@ -112,8 +133,7 @@ export const api = {
 		});
 
 		if (!res.ok) {
-			const error = await res.json();
-			throw new Error(error.message || "Failed to verify horoscope");
+			await throwApiError(res, "Failed to verify horoscope");
 		}
 
 		return res.json();
@@ -130,8 +150,7 @@ export const api = {
 		});
 
 		if (!res.ok) {
-			const error = await res.json();
-			throw new Error(error.message || "Failed to register user X account");
+			await throwApiError(res, "Failed to register user X account");
 		}
 
 		return res.json();
@@ -153,8 +172,7 @@ export const api = {
 		});
 
 		if (!res.ok) {
-			const error = await res.json();
-			throw new Error(error.message || "Failed to update Twitter tokens");
+			await throwApiError(res, "Failed to update Twitter tokens");
 		}
 
 		return res.json();
@@ -171,8 +189,7 @@ export const api = {
 		});
 
 		if (!res.ok) {
-			const error = await res.json();
-			throw new Error(error.message || "Failed to update Birth details");
+			await throwApiError(res, "Failed to update Birth details");
 		}
 
 		return res.json();
@@ -189,8 +206,7 @@ export const api = {
 		});
 
 		if (!res.ok) {
-			const error = await res.json();
-			throw new Error(error.message || "Failed to update trade time");
+			await throwApiError(res, "Failed to update trade time");
 		}
 
 		return res.json();
