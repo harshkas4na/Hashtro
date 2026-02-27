@@ -257,18 +257,21 @@ class EphemerisService:
         Simplified calculation for sect determination.
         """
         try:
-            # Use Swiss Ephemeris azalt function for accurate altitude
+            # Use Swiss Ephemeris azalt function for accurate altitude.
+            # Second argument must be SE_TRUE_ALTITUDE (0) or SE_APP_ALTITUDE (1).
+            # swe.CALC_SET (value=2) is a rise_trans flag and causes wrong results.
+            SE_TRUE_ALTITUDE = 0
             result = swe.azalt(
-                jd, 
-                swe.CALC_SET, 
+                jd,
+                SE_TRUE_ALTITUDE,
                 [lon, lat, 0],  # geopos
-                0,  # atpress (atmospheric pressure)
-                0,  # attemp (temperature)
-                [sun_longitude, 0, 1]  # xin (ecliptic position)
+                0,  # atpress (atmospheric pressure, mbar)
+                0,  # attemp (temperature, °C)
+                [sun_longitude, 0, 1]  # xin (ecliptic longitude, lat, dist)
             )
             return result[1]  # Altitude in degrees
-        except:
-            # Fallback: rough estimate based on ascendant distance
+        except Exception as e:
+            logger.debug(f"Sun altitude calculation failed: {e}, defaulting to 0")
             return 0.0
     
     def _assign_whole_sign_houses(
