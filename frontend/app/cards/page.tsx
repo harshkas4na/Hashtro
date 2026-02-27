@@ -29,29 +29,6 @@ type Screen =
 	| "execute"
 	| "results";
 
-// Helper functions
-function deriveDirection(vibeStatus: string): "LONG" | "SHORT" {
-	const positiveKeywords = [
-		"confident",
-		"optimistic",
-		"energetic",
-		"creative",
-		"happy",
-		"excited",
-		"bold",
-		"adventurous",
-		"passionate",
-		"lucky",
-	];
-	const vibe = vibeStatus.toLowerCase();
-	return positiveKeywords.some((kw) => vibe.includes(kw)) ? "LONG" : "SHORT";
-}
-
-function extractNumber(numStr: string): number {
-	const match = numStr.match(/\d+/);
-	return match ? parseInt(match[0], 10) : 42;
-}
-
 const CardsPage: FC = () => {
 	const {
 		publicKey,
@@ -75,17 +52,6 @@ const CardsPage: FC = () => {
 
 	const wasConnected = useRef(false);
 	const hasCheckedRef = useRef(false);
-
-	// Derived trade params from card
-	const tradeParams = useMemo(() => {
-		if (!card) return null;
-		const vibeStatus = card.front.vibe_status || "Confident";
-		const luckyNumber = extractNumber(card.back.lucky_assets.number);
-		return {
-			direction: deriveDirection(vibeStatus),
-			leverage: Math.min(Math.max(luckyNumber, 2), 50), // Cap leverage between 2x and 50x
-		};
-	}, [card]);
 
 	// Stabilize wallet functions to prevent re-initialization
 	const walletFuncsRef = useRef({
@@ -342,7 +308,7 @@ const CardsPage: FC = () => {
 	}
 
 	// Screen 4: Trade Execution
-	if (currentScreen === "execute" && card && tradeParams) {
+	if (currentScreen === "execute" && card) {
 		return (
 			<>
 				<UserXDetails />
