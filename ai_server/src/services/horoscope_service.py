@@ -222,8 +222,12 @@ class HoroscopeService:
             use_sidereal=False
         )
         
-        # Get current transits
-        current_datetime = datetime.now()
+        # Get current transits.
+        # Use UTC so datetime_to_julian(dt, timezone_offset=0) produces the
+        # correct Julian Day regardless of the server's local timezone.
+        # datetime.now() would return server local time, giving wrong results
+        # when the server is not in UTC.
+        current_datetime = datetime.utcnow()
         transit_planets = ephemeris_service.get_current_transits(
             current_datetime=current_datetime,
             latitude=latitude,
