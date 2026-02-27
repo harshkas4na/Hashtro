@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 43 / 57 done**
+**Progress: 46 / 57 done**
 
 ---
 
@@ -27,7 +27,7 @@ All improvements found from reading the actual code. Each item includes the exac
 **5. ✅ Bare `except:` in two places**
 `horoscope_service.py:431` and `horoscope_service.py:517` — Both use `except:` (no exception type) which catches `KeyboardInterrupt`, `SystemExit`, and `GeneratorExit`. Should be `except Exception as e:` at minimum, with the error logged.
 
-**6. Transit calculations use UTC, not local time**
+**6. ✅ Transit calculations use UTC, not local time**
 `horoscope_service.py:233` — `get_current_transits` is called with `current_datetime = datetime.now()` which is server local time. It also doesn't receive the user's `timezone_offset`. Transit positions are calculated at the server's clock time, not relative to where the user is in the world. The natal chart uses the birth timezone correctly but transits do not.
 
 **7. ✅ `swe.CALC_SET` wrong constant in altitude calculation**
@@ -178,7 +178,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **43. ✅ API error handling loses HTTP status codes**
 `api.ts:41-46` and throughout — All API methods do `throw new Error(error.message || "...")`. This loses the HTTP status code (404, 409, 503, etc.). Callers cannot distinguish "user not found" from "server error" without string-matching on error messages, which is fragile.
 
-**44. No TypeScript types on API success responses**
+**44. ✅ No TypeScript types on API success responses**
 `api.ts` — Most methods return `res.json()` with no type assertion. The return types are inferred only for methods that explicitly annotate them (like `verifyHoroscope`). `getUserProfile`, `registerUser`, and `getHistory` return `any` effectively.
 
 **45. ✅ Dead code: `currentScreen === "payment"` branch**
