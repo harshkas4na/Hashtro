@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 24 / 57 done**
+**Progress: 28 / 57 done**
 
 ---
 
@@ -30,7 +30,7 @@ All improvements found from reading the actual code. Each item includes the exac
 **6. Transit calculations use UTC, not local time**
 `horoscope_service.py:233` — `get_current_transits` is called with `current_datetime = datetime.now()` which is server local time. It also doesn't receive the user's `timezone_offset`. Transit positions are calculated at the server's clock time, not relative to where the user is in the world. The natal chart uses the birth timezone correctly but transits do not.
 
-**7. `swe.CALC_SET` wrong constant in altitude calculation**
+**7. ✅ `swe.CALC_SET` wrong constant in altitude calculation**
 `ephemeris_service.py:266` — `swe.CALC_SET` (value = 2) is a sunset calculation flag, not the correct flag for `swe.azalt`. The azalt function expects a calculation type constant (rising=1, setting=2, transit=3) but using CALC_SET for altitude calculation produces incorrect results. The altitude fallback returns 0.0 which defaults all charts to "night" sect.
 
 **8. ✅ No validation that luck_score and vibe_status are consistent**
@@ -83,7 +83,7 @@ All routes are publicly accessible with no JWT or API key check. Anyone who know
 **19. Twitter OAuth tokens stored in plaintext**
 `schema.sql:18-20` — `twitter_access_token` and `twitter_refresh_token` are stored as plain TEXT in Supabase. These tokens grant write access to users' Twitter accounts (posting tweets). Should be encrypted at rest.
 
-**20. `SELECT *` exposes OAuth tokens in every user fetch**
+**20. ✅ `SELECT *` exposes OAuth tokens in every user fetch**
 `user.service.js:178` — `findUserByWallet` runs `select("*")` which returns `twitter_access_token` and `twitter_refresh_token` in every response. These tokens end up in the full user object that gets passed into `horoscopeController.confirm()`, logged in places, and returned in profiles. Should select only the columns needed per operation.
 
 **21. ✅ `GET /api/user/profile/:walletAddress` has no input validation**
@@ -144,7 +144,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **35. ✅ Twitter data is re-fetched on every horoscope generation even though it rarely changes**
 `horoscope.controller.js:106` — `twitterService.getEnrichedXContext(user)` makes 2 Twitter API calls (profile + tweets) on every horoscope generation. Twitter context (bio, recent tweets) doesn't change minute to minute. Should be cached for at least 1-6 hours per user.
 
-**36. No pagination on history endpoint**
+**36. ✅ No pagination on history endpoint**
 `horoscope.routes.js:48` — The history endpoint supports `limit` but no cursor or offset. Getting page 2 of history requires knowing what's on page 1 and computing an offset externally. Standard cursor-based pagination (`after_date` param) would be more robust.
 
 ---
