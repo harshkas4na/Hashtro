@@ -13,7 +13,6 @@ import {
 import { WalletBalance } from "@/components/balance";
 import { HoroscopeReveal } from "@/components/HoroscopeReveal";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { TradeConfirm } from "@/components/TradeConfirm";
 import { type TradeResult } from "@/components/TradeExecution";
 import { TradeResults } from "@/components/TradeResults";
 import { UserXDetails } from "@/components/TwitterDetails";
@@ -26,9 +25,7 @@ import { usePrivyWallet } from "../hooks/use-privy-wallet";
 
 type Screen =
 	| "loading"
-	| "payment"
 	| "reveal"
-	| "confirm"
 	| "execute"
 	| "results";
 
@@ -68,7 +65,6 @@ const CardsPage: FC = () => {
 	const router = useRouter();
 
 	const [currentScreen, setCurrentScreen] = useState<Screen>("loading");
-	const [tradeAmount, setTradeAmount] = useState(10);
 	const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [verified, setVerified] = useState(false);
@@ -257,14 +253,6 @@ const CardsPage: FC = () => {
 		setCurrentScreen("execute");
 	};
 
-	// Handle trade execution
-	const handleExecuteTrade = (amount: number) => {
-		setTradeAmount(amount);
-		setCurrentScreen("execute");
-	};
-
-
-
 
 
 	// Handle trade completion
@@ -339,23 +327,6 @@ const CardsPage: FC = () => {
 		);
 	}
 
-	// Should not reach here if loading/error covers it, but for safety in "payment" logic removal
-	if (currentScreen === "payment") {
-		// Fallback if somehow state gets here, just show retry
-		return (
-			<section className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0f] text-white px-4">
-				<div className="card-glass text-center max-w-md">
-					<button
-						onClick={generateFreeHoroscope}
-						className="btn-primary w-full"
-					>
-						Reveal Horoscope
-					</button>
-				</div>
-			</section>
-		);
-	}
-
 	// Screen 3: Horoscope Reveal
 	if (currentScreen === "reveal" && card) {
 		return (
@@ -370,25 +341,7 @@ const CardsPage: FC = () => {
 		);
 	}
 
-	// Screen 4: Trade Confirm
-	if (currentScreen === "confirm" && card) {
-		return (
-			<>
-				<UserXDetails />
-				<WalletBalance />
-				<div className="absolute top-0 md:top-6 right-5 md:right-6 z-50">
-					<WalletDropdown variant="desktop" />
-				</div>
-				<TradeConfirm
-					card={card}
-					onBack={() => setCurrentScreen("reveal")}
-					onExecute={handleExecuteTrade}
-				/>
-			</>
-		);
-	}
-
-	// Screen 5: Trade Execution
+	// Screen 4: Trade Execution
 	if (currentScreen === "execute" && card && tradeParams) {
 		return (
 			<>
@@ -410,7 +363,7 @@ const CardsPage: FC = () => {
 		);
 	}
 
-	// Screen 6: Trade Results
+	// Screen 5: Trade Results
 	if (currentScreen === "results" && card && tradeResult) {
 		return (
 			<>
