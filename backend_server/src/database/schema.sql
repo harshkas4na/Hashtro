@@ -122,3 +122,23 @@ BEGIN
 END $$;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS trade_made_at TIMESTAMP WITH TIME ZONE;
+
+-- Migration: Convert horoscope_text from TEXT to JSONB.
+-- JSONB allows querying inside the card (e.g. luck_score), compression, and
+-- indexing. Requires all existing rows to contain valid JSON (they always
+-- should since the backend writes them via JSON.stringify).
+-- Run only once against an existing database; safe to skip if already JSONB.
+DO $$
+BEGIN
+  IF (SELECT data_type FROM information_schema.columns
+      WHERE table_name = 'horoscopes' AND column_name = 'horoscope_text') = 'text' THEN
+    ALTER TABLE horoscopes ALTER COLUMN horoscope_text TYPE JSONB
+      USING horoscope_text::JSONB;
+    RAISE NOTICE 'horoscope_text converted to JSONB';
+  ELSE
+    RAISE NOTICE 'horoscope_text is already JSONB — skipping migration';
+  END IF;
+END $$;
+
+-- Index on verified for fast "show all unverified horoscopes today" queries.
+CREATE INDEX IF NOT EXISTS idx_horoscopes_verified ON horoscopes(verified);
