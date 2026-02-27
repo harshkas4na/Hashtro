@@ -547,13 +547,35 @@ class HoroscopeService:
             "malefic_severity": "constructive"
         }
     
+    # Per-planet fallback flavour text so the error card reflects the user's
+    # actual Time Lord rather than always blaming Mercury.
+    _FALLBACK_FLAVOUR = {
+        "Sun":     ("Solar flare disrupting cosmic servers",
+                    "The Sun is overexposing the signal. Shield your chart."),
+        "Moon":    ("Luna is deep in reflection — your reading is on hold",
+                    "Lunar tides are pulling the data back. Breathe and wait."),
+        "Mercury": ("Mercury retrograde in the cosmic servers",
+                    "HODL tight. Mercury will station direct shortly."),
+        "Venus":   ("Venus is counting cosmic coins — servers are busy",
+                    "The love planet diverted bandwidth. Beauty takes time."),
+        "Mars":    ("Mars combat mode triggered server interference",
+                    "Red planet energy is strong. Channel it into patience."),
+        "Jupiter": ("Jupiter expanding beyond available bandwidth",
+                    "Too much cosmic abundance to process at once. Try again."),
+        "Saturn":  ("Saturn imposed a time limit on the cosmic pipeline",
+                    "Saturnian delays are temporary. Discipline pays off."),
+    }
+    _FALLBACK_DEFAULT = ("The stars are recalibrating…",
+                         "HODL tight. The cosmos will align shortly.")
+
     def _get_fallback_card(self, time_lord: str, sect: str) -> Dict[str, Any]:
-        """Generate fallback card when everything fails"""
+        """Generate fallback card when everything fails, varied by time lord."""
+        hook_1, hook_2 = self._FALLBACK_FLAVOUR.get(time_lord, self._FALLBACK_DEFAULT)
         return AstroCard(
             front=HoroscopeFront(
                 tagline="The stars are recalibrating... ✨",
-                hook_1="Mercury retrograde in the cosmic servers",
-                hook_2="HODL tight. The stars will align shortly.",
+                hook_1=hook_1,
+                hook_2=hook_2,
                 luck_score=50,
                 vibe_status="Shaky",
                 energy_emoji="🔮",
@@ -562,12 +584,12 @@ class HoroscopeService:
                 profection_house=1
             ),
             back=HoroscopeBack(
-                detailed_reading="Mercury retrograde in the cosmic servers. Your chart is being processed through the ethers. Check back soon for your personalized reading.",
+                detailed_reading=f"{hook_1}. Your chart is being processed through the ethers. Check back soon for your personalized reading.",
                 hustle_alpha="Focus on grounding activities today. The stars will align shortly.",
                 shadow_warning="Avoid making major decisions until the cosmic connection stabilizes.",
                 lucky_assets=self._generate_random_lucky_assets(),
-                time_lord_insight="Your Time Lord is gathering cosmic data.",
-                planetary_blame="Technical Mercury square Digital Saturn (Temporary)",
+                time_lord_insight=f"Your Time Lord {time_lord} is gathering cosmic data.",
+                planetary_blame=f"{time_lord} square Digital Saturn (Temporary)",
                 remedy="Take 5 deep breaths and try again.",
                 cusp_alert=None
             ),
