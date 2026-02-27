@@ -101,10 +101,9 @@ class UserController {
           timezoneOffset: user.timezone_offset,
           createdAt: user.created_at,
           username: user.username,
-          twitterAccessToken: user.twitter_access_token,
-          twitterRefreshToken: user.twitter_refresh_token,
-          twitterTokenExpiresAt: user.twitter_token_expires,
           tradeMadeAt: user.trade_made_at,
+          // OAuth tokens intentionally excluded — they grant write access to
+          // the user's Twitter account and must not be sent to clients.
         },
       });
     } catch (error) {
