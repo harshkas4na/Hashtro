@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 49 / 57 done**
+**Progress: 55 / 57 done**
 
 ---
 
@@ -49,8 +49,8 @@ All improvements found from reading the actual code. Each item includes the exac
 **11. ✅ LLM model name hardcoded in constructor**
 `horoscope_service.py:110` — `model="gemini-2.5-flash"` is hardcoded. Changing the model requires a code change. Should be `settings.llm_model` so it can be switched via environment variable.
 
-**12. No circuit breaker for Gemini API**
-`horoscope_service.py:425` — If Gemini is down or rate-limited, every request waits for the LangChain `max_retries=3` to exhaust before failing. There's no circuit breaker that trips after N consecutive failures and fast-fails subsequent requests for a cooldown period.
+**12. ✅ No circuit breaker for Gemini API**
+`horoscope_service.py:425` — Added in-process circuit breaker on HoroscopeService (_cb_failures / _cb_opened_at). Opens after 3 consecutive generation failures; half-opens after 60 s. Open state returns fallback card immediately without waiting for LangChain max_retries=3.
 
 **13. ✅ No request tracing / correlation ID**
 `horoscope_routes.py:38` — Added CorrelationIdMiddleware that reads X-Request-ID from the backend or generates UUID. Stored in ContextVar, echoed in response header, and included in route log lines.
@@ -113,14 +113,14 @@ Running this file as-is would fail with a syntax error for those three columns.
 **26. ✅ `horoscope_text` column stores full JSON as TEXT**
 `schema.sql:35` — The card JSON (a rich structured object with front, back, lucky_assets, cdo_summary, etc.) is stored as a TEXT string. Using `JSONB` would allow querying inside the card (e.g., `WHERE horoscope_text->>'luck_score' > 70`), indexing, and compression.
 
-**27. No `trade_attempts` tracking on horoscopes**
-The `horoscopes` table has no column tracking how many times a user has attempted a trade on that day's horoscope. This makes implementing retry limits impossible without a separate table. Referenced in `IMPLEMENTATION_TRACKER.md` as something to build.
+**27. ✅ No `trade_attempts` tracking on horoscopes**
+Added `trade_attempts INTEGER DEFAULT 0` column to horoscopes. Added `increment_trade_attempts(p_wallet, p_date)` Postgres RPC for atomic increment. Backend increments before on-chain check so every attempt is counted, including rejected ones.
 
 **28. `trade_made_at` on users captures only the last trade**
 `schema.sql:124` — `trade_made_at` is a single timestamp on the users table — overwritten on every trade. There is no trade history at all beyond "when did they last trade".
 
-**29. No soft deletes**
-Both `users` and `horoscopes` have no `deleted_at` column. Deleting a user cascades and permanently removes all horoscopes. Recovery is impossible.
+**29. ✅ No soft deletes**
+Added `deleted_at TIMESTAMP WITH TIME ZONE` to both `users` and `horoscopes`. Added partial indexes `idx_users_active` and `idx_horoscopes_active` covering only rows where `deleted_at IS NULL`.
 
 ---
 
@@ -129,8 +129,8 @@ Both `users` and `horoscopes` have no `deleted_at` column. Deleting a user casca
 **30. Rate limiter uses in-memory store**
 `rateLimiter.js:12` — `express-rate-limit` defaults to an in-memory store. On multi-instance deployments (e.g., two backend pods), each instance maintains its own counter. A user can exceed the real rate limit by N × the configured limit if there are N instances. Should use a Redis store (`rate-limit-redis`) for production.
 
-**31. No circuit breaker for AI server calls**
-`ai.service.js:23` — If the AI server is unresponsive, every incoming horoscope request holds open an HTTP connection for 60 seconds before timing out. Under load, this exhausts the thread pool. A circuit breaker (e.g., via `opossum`) that trips after consecutive failures and returns a fast error would protect the backend.
+**31. ✅ No circuit breaker for AI server calls**
+`ai.service.js:23` — Added in-process circuit breaker (trips after 3 consecutive failures, half-opens after 30 s) and one retry with 2 s delay for transient errors (ETIMEDOUT, ECONNABORTED, HTTP 5xx). ECONNREFUSED short-circuits immediately.
 
 **32. ✅ No backend health check endpoint**
 There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness probes, load balancers, and uptime monitors have nothing to check.
@@ -206,8 +206,8 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **51. ✅ Zustand store not persisted across page refreshes**
 `useStore` — The store holds `card`, `wallet`, and `user`. On a page refresh, the store is empty and the app makes full API calls again (profile check + horoscope status + generation). Persisting the card to `sessionStorage` via `zustand/middleware`'s `persist` would make refreshes instant.
 
-**52. No sharing flow for the horoscope card**
-The card has a `front` with a shareable `tagline`, `hook_1`, `hook_2`, and `vibe_status` — explicitly designed to be shared publicly. But there is no "Share on X" button that composes a tweet from these fields. The `UserXDetails` component shows Twitter info but there's no share CTA anywhere on the reveal or results screen.
+**52. ✅ No sharing flow for the horoscope card**
+Added "Share Reading on X" button to HoroscopeReveal (the card reveal screen). Uses Twitter Web Intent URL with card's tagline and hook_1 — no API or OAuth required. TradeResults already had a share button; this closes the gap on the reveal screen.
 
 **53. ✅ Flash service failure is silent to the user**
 `cards/page.tsx:136-143` — If Flash service initialization fails, the error is logged to console and `flashService` stays `null`. The user sees no indication. When they click "Verify Trade", the button would be active but the trade would silently fail. Should show a banner: "Flash trading unavailable. Please refresh."
