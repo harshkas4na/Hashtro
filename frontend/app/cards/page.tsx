@@ -53,6 +53,16 @@ const CardsPage: FC = () => {
 	const wasConnected = useRef(false);
 	const hasCheckedRef = useRef(false);
 
+	// Single stable Connection shared by Flash service init and balance poller.
+	// Created once per component mount; avoids opening multiple WebSocket
+	// connections to the same RPC endpoint.
+	const connectionRef = useRef<Connection>(
+		new Connection(
+			process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://solana-rpc.publicnode.com",
+			"confirmed",
+		),
+	);
+
 	// Stabilize wallet functions to prevent re-initialization
 	const walletFuncsRef = useRef({
 		signTransaction,
@@ -84,13 +94,8 @@ const CardsPage: FC = () => {
 	useEffect(() => {
 		if (!walletAdapter) return;
 
-		const endpoint =
-			process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-			"https://solana-rpc.publicnode.com";
-		const connection = new Connection(endpoint, "confirmed");
-
 		const service = new FlashPrivyService({
-			connection,
+			connection: connectionRef.current,
 			wallet: walletAdapter,
 			env: "mainnet-beta",
 		});
@@ -197,12 +202,8 @@ const CardsPage: FC = () => {
 			}
 
 			try {
-				const endpoint =
-					process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-					"https://solana-rpc.publicnode.com";
-				const conn = new Connection(endpoint, "confirmed");
 				const pubKey = new PublicKey(publicKey);
-				const lamports = await conn.getBalance(pubKey);
+				const lamports = await connectionRef.current.getBalance(pubKey);
 				setBalance(lamports / LAMPORTS_PER_SOL);
 			} catch (err) {
 				console.error("Error fetching balance:", err);
