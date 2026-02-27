@@ -122,7 +122,7 @@ export const api = {
 	/**
 	 * Add twitter details to an existing user
 	 */
-	async regsiterX(data: XDetails) {
+	async registerX(data: XDetails) {
 		const res = await fetch(`${API_BASE}/user/x-account`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },

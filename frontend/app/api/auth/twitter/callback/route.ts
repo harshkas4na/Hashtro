@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 		const externalId = `twitter_${result.userData.data.id}`;
 		const expiresAt = new Date(Date.now() + result.expiresIn * 1000);
 
-		await api.regsiterX({
+		await api.registerX({
 			id: parsedState.user_id,
 			twitterId: externalId,
 			username:
