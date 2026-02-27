@@ -468,10 +468,10 @@ class HoroscopeService:
                     card_data["back"]["lucky_assets"]["emoji"] = asset_info.get("emoji")
                     card_data["back"]["lucky_assets"]["category"] = asset_info.get("category")
                 else:
-                    # Fallback if AI picked a hallucinated color
-                    # Pick a random one deterministic based on color string
-                    idx = len(color or "") % len(mapping) if mapping else 0
-                    fallback_key = list(mapping.keys())[idx] if mapping else "Gold"
+                    # Fallback if AI picked a hallucinated color — pick a
+                    # truly random key instead of the biased len(color) % n
+                    # modulo which always maps short color names to the same slot.
+                    fallback_key = random.choice(list(mapping.keys())) if mapping else "Gold"
                     asset_info = mapping.get(fallback_key)
                     if asset_info:
                         card_data["back"]["lucky_assets"]["color"] = fallback_key
