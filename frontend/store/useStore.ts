@@ -26,6 +26,9 @@ export const useStore = create<AppState>()(
 
 	refreshBalance: async (wallet: string) => {
 		try {
+			// NEXT_PUBLIC_SOLANA_RPC_URL should be set to a dedicated paid RPC
+			// (Helius, QuickNode, Alchemy) in production. The publicnode fallback
+			// is a shared free endpoint with rate limits and no uptime SLA.
 			const endpoint =
 				process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
 				"https://solana-rpc.publicnode.com";
