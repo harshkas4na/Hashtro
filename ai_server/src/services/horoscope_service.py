@@ -421,7 +421,8 @@ class HoroscopeService:
             # Parse response
             try:
                 card_data = self.output_parser.parse(raw_output.content)
-            except:
+            except Exception as parse_err:
+                logger.warning(f"Output parser failed, attempting JSON extraction: {parse_err}")
                 # Fallback: extract JSON from markdown blocks
                 match = re.search(r'\{.*\}', raw_output.content, re.DOTALL)
                 if match:
@@ -508,7 +509,8 @@ class HoroscopeService:
             birth_date = self._parse_date(dob)
             zodiac = self._get_fallback_zodiac(birth_date.day, birth_date.month)
             ruler = self._get_fallback_ruler(zodiac)
-        except:
+        except Exception as e:
+            logger.warning(f"Fallback summary date parse failed: {e}, defaulting to Aries/Mars")
             zodiac = "Aries"
             ruler = "Mars"
         
