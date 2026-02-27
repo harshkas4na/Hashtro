@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     
     # Google AI
     google_api_key: str = Field(..., alias="GOOGLE_API_KEY")
+    llm_model: str = Field(default="gemini-2.5-flash", alias="LLM_MODEL")
     
     # Server Configuration
     host: str = Field(default="127.0.0.1", alias="HOST")
