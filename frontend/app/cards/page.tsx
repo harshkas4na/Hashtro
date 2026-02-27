@@ -44,6 +44,9 @@ const CardsPage: FC = () => {
 
 	const wasConnected = useRef(false);
 	const hasCheckedRef = useRef(false);
+	// Track which publicKey we last ran the status check for so we detect
+	// wallet switches even when connected remains true.
+	const lastCheckedPublicKey = useRef<string | null>(null);
 
 	// Single stable Connection shared by Flash service init and balance poller.
 	// Created once per component mount; avoids opening multiple WebSocket
@@ -88,8 +91,15 @@ const CardsPage: FC = () => {
 				return;
 			}
 
+			// Reset if the user switched to a different wallet while staying
+			// connected (Privy can change publicKey without toggling connected).
+			if (publicKey !== lastCheckedPublicKey.current) {
+				hasCheckedRef.current = false;
+			}
+
 			if (hasCheckedRef.current) return;
 			hasCheckedRef.current = true;
+			lastCheckedPublicKey.current = publicKey;
 
 			setWallet(publicKey);
 
