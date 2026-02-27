@@ -4,7 +4,7 @@ All improvements found from reading the actual code. Each item includes the exac
 
 **Legend:** ✅ Done | ⬜ Not started
 
-**Progress: 46 / 57 done**
+**Progress: 49 / 57 done**
 
 ---
 
@@ -107,7 +107,7 @@ twitter_access_token TEXT,    -- correct
 ```
 Running this file as-is would fail with a syntax error for those three columns.
 
-**25. `dob` stored as TEXT with no format enforcement**
+**25. ✅ `dob` stored as TEXT with no format enforcement**
 `schema.sql:12` — `dob TEXT` accepts any string. The service accepts multiple date formats (`April 20, 1995`, `1995-04-20`, `20/04/1995`). This makes date-based queries impossible and means two registrations of the same user with different formats store different strings.
 
 **26. ✅ `horoscope_text` column stores full JSON as TEXT**
@@ -200,7 +200,7 @@ There is no `GET /health` endpoint on the backend. Kubernetes liveness/readiness
 **49. ✅ No loading state indicator during balance fetch**
 `cards/page.tsx:75` — Already handled: `balance.tsx` has its own `loading` state (shows spinner during fetch) and shows "Connecting..." for null, never "0 SOL". `TradeModal` guards `balance !== null` before showing insufficient-balance warning.
 
-**50. Hardcoded public RPC endpoint**
+**50. ✅ Hardcoded public RPC endpoint**
 `cards/page.tsx:127` — `"https://solana-rpc.publicnode.com"` is a public free RPC. It has rate limits, no uptime SLA, and is shared with all other users of the public node. For a trading product, this needs a dedicated paid RPC (Helius, QuickNode, Alchemy).
 
 **51. ✅ Zustand store not persisted across page refreshes**
