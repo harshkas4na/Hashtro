@@ -121,14 +121,21 @@ class HoroscopeService {
      * @param {number} limit - Number of results to return
      * @returns {Promise<Array>} Array of horoscopes
      */
-    async getUserHoroscopes(walletAddress, limit = 10) {
+    async getUserHoroscopes(walletAddress, limit = 10, afterDate = null) {
         try {
-            const { data, error } = await this.supabase
+            let query = this.supabase
                 .from('horoscopes')
                 .select('*')
                 .eq('wallet_address', walletAddress)
                 .order('date', { ascending: false })
                 .limit(limit);
+
+            // Cursor-based pagination: only return rows older than afterDate
+            if (afterDate) {
+                query = query.lt('date', afterDate);
+            }
+
+            const { data, error } = await query;
 
             if (error) {
                 logger.error('Get user horoscopes error:', error);

@@ -200,12 +200,19 @@ class HoroscopeController {
     async getHistory(req, res, next) {
         try {
             const { walletAddress } = req.params;
-            const limit = parseInt(req.query.limit) || 10;
+            const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+            const afterDate = req.query.after_date || null;
 
-            const horoscopes = await horoscopeService.getUserHoroscopes(walletAddress, limit);
+            const horoscopes = await horoscopeService.getUserHoroscopes(walletAddress, limit, afterDate);
+
+            // next_cursor is the date of the last row — pass as after_date on the next request
+            const nextCursor = horoscopes.length === limit
+                ? horoscopes[horoscopes.length - 1].date
+                : null;
 
             return successResponse(res, {
                 count: horoscopes.length,
+                next_cursor: nextCursor,
                 horoscopes: horoscopes.map(h => ({
                     date: h.date,
                     horoscopeText: h.horoscope_text,
