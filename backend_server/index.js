@@ -84,6 +84,28 @@ app.get('/', (req, res) => {
 });
 
 /**
+ * Root-level health check for load balancers and uptime monitors.
+ * Checks database connectivity so the probe reflects real readiness.
+ */
+app.get('/health', async (req, res) => {
+  try {
+    const dbOk = await testConnection();
+    const status = dbOk ? 'ok' : 'degraded';
+    res.status(dbOk ? 200 : 503).json({
+      status,
+      db: dbOk ? 'connected' : 'unreachable',
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(503).json({
+      status: 'error',
+      db: 'unreachable',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
  * Mount API routes
  */
 app.use('/api', routes);
