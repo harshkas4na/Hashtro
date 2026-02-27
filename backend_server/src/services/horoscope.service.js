@@ -14,9 +14,10 @@ class HoroscopeService {
      * @returns {string} Today's date
      */
     getTodayDateString() {
-        // Return date in IST (Asia/Kolkata)
-        // using 'en-CA' locale gives YYYY-MM-DD format
-        return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        // Use UTC so "today" is the same for all users regardless of their
+        // location. IST (Asia/Kolkata) was biased: US users on Feb 27 would
+        // receive a Feb 28 slot if IST had already crossed midnight.
+        return new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
     }
 
     /**
