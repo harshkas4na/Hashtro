@@ -481,9 +481,28 @@ class HoroscopeService:
                         card_data["back"]["lucky_assets"]["emoji"] = asset_info.get("emoji")
                         card_data["back"]["lucky_assets"]["category"] = asset_info.get("category")
 
+            # Enforce luck_score / vibe_status consistency.
+            # The AI prompt instructs this but it can still hallucinate
+            # mismatched pairs (e.g. luck_score=78 with vibe_status="Eclipse").
+            front = card_data.get("front", {})
+            luck_score = front.get("luck_score", 50)
+            correct_vibe = (
+                "Stellar" if luck_score >= 80 else
+                "Ascending" if luck_score >= 51 else
+                "Shaky" if luck_score >= 40 else
+                "Eclipse"
+            )
+            if front.get("vibe_status") != correct_vibe:
+                logger.warning(
+                    f"Correcting vibe_status mismatch: luck_score={luck_score} "
+                    f"had vibe_status={front.get('vibe_status')!r}, "
+                    f"correcting to {correct_vibe!r}"
+                )
+                card_data["front"]["vibe_status"] = correct_vibe
+
             # Validate and enhance
             validated_card = AstroCard(**card_data)
-            
+
             # Add CDO summary to response
             card_dict = validated_card.model_dump()
             if cdo_summary:
