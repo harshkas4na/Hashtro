@@ -161,3 +161,46 @@ ALTER TABLE users ADD CONSTRAINT IF NOT EXISTS users_dob_format
 --   WHERE h.wallet_address = u.wallet_address
 --     AND h.user_id IS NULL;
 -- ALTER TABLE horoscopes ALTER COLUMN user_id SET NOT NULL;
+
+-- Migration: Soft deletes for users and horoscopes.
+-- Adds a deleted_at timestamp column. NULL = active; non-NULL = soft-deleted.
+-- Hard DELETE is replaced by UPDATE deleted_at = NOW() in the API.
+-- Existing queries should add WHERE deleted_at IS NULL to exclude soft-deleted rows.
+-- The partial indexes below make those filtered queries fast without a full scan.
+ALTER TABLE users      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE horoscopes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;
+
+-- Partial indexes covering only active (non-deleted) rows.
+CREATE INDEX IF NOT EXISTS idx_users_active
+  ON users(wallet_address) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_horoscopes_active
+  ON horoscopes(wallet_address, date) WHERE deleted_at IS NULL;
+
+-- Migration: trade_attempts tracking per horoscope.
+-- Tracks how many times the user has attempted to verify a trade for a given
+-- day's horoscope. Allows the backend to enforce a per-day retry cap without
+-- a separate table.
+ALTER TABLE horoscopes ADD COLUMN IF NOT EXISTS trade_attempts INTEGER NOT NULL DEFAULT 0;
+
+-- Atomic increment helper used by horoscope.service.js to avoid a read-modify-write race.
+-- Returns the new trade_attempts value.
+CREATE OR REPLACE FUNCTION increment_trade_attempts(p_wallet TEXT, p_date DATE)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_new INTEGER;
+BEGIN
+  UPDATE horoscopes
+    SET trade_attempts = trade_attempts + 1
+    WHERE wallet_address = p_wallet
+      AND date = p_date
+    RETURNING trade_attempts INTO v_new;
+  RETURN v_new;
+END;
+$$;
+
+-- Grant execute to service role (the backend uses the service key)
+GRANT EXECUTE ON FUNCTION increment_trade_attempts(TEXT, DATE) TO service_role;

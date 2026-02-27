@@ -176,6 +176,10 @@ class HoroscopeController {
                 return errorResponse(res, 'User not found', 404);
             }
 
+            // Count the attempt before the on-chain check (intentional: failed
+            // attempts still consume quota to prevent brute-force replay).
+            await horoscopeService.incrementTradeAttempts(walletAddress);
+
             // Verify the transaction exists on-chain
             const txValid = await solanaService.verifyTransaction(txSig);
             if (!txValid) {

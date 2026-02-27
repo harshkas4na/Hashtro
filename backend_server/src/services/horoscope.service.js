@@ -231,6 +231,56 @@ class HoroscopeService {
             throw error;
         }
     }
+
+    /**
+     * Increment trade_attempts counter for today's horoscope.
+     * Called before the trade verification check so every attempt is counted,
+     * whether it succeeds or not. Uses a Postgres raw increment to avoid a
+     * read-modify-write race condition.
+     * @param {string} walletAddress - User's wallet address
+     * @returns {Promise<number>} New trade_attempts value after increment
+     */
+    async incrementTradeAttempts(walletAddress) {
+        try {
+            const today = this.getTodayDateString();
+
+            // Use Postgres raw SQL for atomic increment
+            const { data, error } = await this.supabase.rpc('increment_trade_attempts', {
+                p_wallet: walletAddress,
+                p_date: today,
+            });
+
+            if (error) {
+                // If the RPC doesn't exist yet (schema not migrated) log a warning
+                // and fall back to a best-effort non-atomic update.
+                if (error.code === 'PGRST202' || error.code === '42883') {
+                    logger.warn('increment_trade_attempts RPC not found, using fallback');
+                    const { data: row } = await this.supabase
+                        .from('horoscopes')
+                        .select('trade_attempts')
+                        .eq('wallet_address', walletAddress)
+                        .eq('date', today)
+                        .single();
+                    const current = row?.trade_attempts ?? 0;
+                    await this.supabase
+                        .from('horoscopes')
+                        .update({ trade_attempts: current + 1 })
+                        .eq('wallet_address', walletAddress)
+                        .eq('date', today);
+                    return current + 1;
+                }
+                logger.error('incrementTradeAttempts error:', error);
+                throw error;
+            }
+
+            logger.info('Trade attempt counted', { walletAddress, date: today, attempts: data });
+            return data;
+        } catch (error) {
+            // Non-fatal: don't let counter failure block the trade verification
+            logger.error('incrementTradeAttempts failed (non-fatal):', error.message);
+            return null;
+        }
+    }
 }
 
 module.exports = new HoroscopeService();
