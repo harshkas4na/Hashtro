@@ -180,8 +180,10 @@ export interface User {
 	twitterId?: string;
 	twitterProfileUrl?: string;
 	twitterUsername?: string;
+	twitterAccessToken?: string;
+	twitterRefreshToken?: string;
+	twitterTokenExpiresAt?: string;
 	tradeMadeAt?: string;
-	// OAuth tokens are intentionally excluded — the server no longer returns them.
 }
 
 export interface HistoryEntry {
