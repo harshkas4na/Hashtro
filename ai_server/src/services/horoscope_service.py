@@ -17,13 +17,7 @@ from langchain_core.exceptions import OutputParserException
 from ..config.settings import settings
 from ..config.logger import logger
 from .cache_service import cache_service
-from ..prompts.senior_astrologer_prompt import (
-    SENIOR_ASTROLOGER_PROMPT, 
-    calculate_vibe_status, 
-    SENIOR_ASTROLOGER_PROMPT, 
-    calculate_vibe_status, 
-    get_energy_emoji
-)
+from ..prompts.senior_astrologer_prompt import SENIOR_ASTROLOGER_PROMPT
 from pathlib import Path
 import random
 
