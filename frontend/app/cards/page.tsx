@@ -6,7 +6,6 @@ import {
 	type FC,
 	useCallback,
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -19,7 +18,6 @@ import { UserXDetails } from "@/components/TwitterDetails";
 import { TradeModal } from "@/components/trade-modal";
 import { WalletDropdown } from "@/components/wallet-dropdown";
 import { api } from "@/lib/api";
-import { FlashPrivyService } from "@/lib/flash-trade";
 import { useStore } from "@/store/useStore";
 import { usePrivyWallet } from "../hooks/use-privy-wallet";
 
@@ -33,10 +31,7 @@ const CardsPage: FC = () => {
 	const {
 		publicKey,
 		connected,
-		sendTransaction,
 		isReady,
-		signTransaction,
-		signAllTransactions,
 	} = usePrivyWallet();
 	const { card, setCard, setWallet, setUser, loading, setLoading } = useStore();
 	const router = useRouter();
@@ -46,9 +41,6 @@ const CardsPage: FC = () => {
 	const [error, setError] = useState<string | null>(null);
 	const [verified, setVerified] = useState(false);
 	const [balance, setBalance] = useState<number | null>(null);
-	const [flashService, setFlashService] = useState<FlashPrivyService | null>(
-		null,
-	);
 
 	const wasConnected = useRef(false);
 	const hasCheckedRef = useRef(false);
@@ -62,57 +54,6 @@ const CardsPage: FC = () => {
 			"confirmed",
 		),
 	);
-
-	// Stabilize wallet functions to prevent re-initialization
-	const walletFuncsRef = useRef({
-		signTransaction,
-		signAllTransactions,
-		sendTransaction,
-	});
-	useEffect(() => {
-		walletFuncsRef.current = {
-			signTransaction,
-			signAllTransactions,
-			sendTransaction,
-		};
-	}, [signTransaction, signAllTransactions, sendTransaction]);
-
-	const walletAdapter = useMemo(() => {
-		if (!publicKey) return null;
-		return {
-			publicKey,
-			signTransaction: async (tx: any) =>
-				walletFuncsRef.current.signTransaction?.(tx),
-			signAllTransactions: async (txs: any) =>
-				walletFuncsRef.current.signAllTransactions?.(txs),
-			sendTransaction: async (tx: any) =>
-				walletFuncsRef.current.sendTransaction?.(tx),
-		};
-	}, [publicKey]);
-
-	// Initialize Flash service
-	useEffect(() => {
-		if (!walletAdapter) return;
-
-		const service = new FlashPrivyService({
-			connection: connectionRef.current,
-			wallet: walletAdapter,
-			env: "mainnet-beta",
-		});
-
-		service
-			.initialize()
-			.then(() => {
-				setFlashService(service);
-			})
-			.catch((err) => {
-				console.error("Flash service init error:", err);
-			});
-
-		return () => {
-			service.cleanup();
-		};
-	}, [walletAdapter]);
 
 	// Redirect if disconnected
 	useEffect(() => {
