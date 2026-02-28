@@ -43,7 +43,7 @@
             "category": "crypto"
         },
         "Sky Blue": {
-            "ticker": "PYTH",
+            "ticker": "ETH",
             "name": "Pyth Network",
             "max_leverage": 50,
             "emoji": "🩵",

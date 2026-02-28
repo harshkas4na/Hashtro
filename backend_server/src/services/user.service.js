@@ -371,14 +371,22 @@ class UserService {
    * @param {boolean} delegated
    * @returns {Promise<Object>} Updated user
    */
-  async setTradingDelegated(walletAddress, delegated) {
+  async setTradingDelegated(walletAddress, delegated, { privyUserId, privyWalletId } = {}) {
     try {
+      const updateData = {
+        trading_delegated: delegated,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Persist Privy IDs when enabling — backfills users who registered before this field existed
+      if (delegated) {
+        if (privyUserId)   updateData.privy_user_id   = privyUserId;
+        if (privyWalletId) updateData.privy_wallet_id = privyWalletId;
+      }
+
       const { data, error } = await this.supabase
         .from("users")
-        .update({
-          trading_delegated: delegated,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("wallet_address", walletAddress)
         .select("wallet_address, trading_delegated")
         .single();

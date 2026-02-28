@@ -101,6 +101,23 @@ async function fetchPrices(poolConfig) {
     return priceMap;
 }
 
+// ─── Spot Price Helper ────────────────────────────────────────────────────────
+
+/**
+ * Get the current USD price of a token from Pyth Hermes.
+ * @param {string} symbol  e.g. 'ETH'
+ * @param {string} [network]
+ * @returns {Promise<number>}
+ */
+async function getTokenPrice(symbol, network) {
+    const net = network ?? 'mainnet-beta';
+    const POOL_CONFIG = PoolConfig.fromIdsByName('Crypto.1', net === 'devnet' ? 'devnet' : 'mainnet-beta');
+    const priceMap = await fetchPrices(POOL_CONFIG);
+    const entry = priceMap.get(symbol.toUpperCase());
+    if (!entry) throw new Error(`Price not found for ${symbol}`);
+    return Number(entry.price.price.toString()) / 10 ** Math.abs(entry.price.exponent.toNumber());
+}
+
 // ─── Main: Build Open-Position Transaction ────────────────────────────────────
 
 /**
@@ -120,6 +137,29 @@ async function fetchPrices(poolConfig) {
  * @returns {Promise<{base64Tx: string, blockhash: string, lastValidBlockHeight: number, estimatedPrice: number}>}
  */
 async function buildOpenPositionTx({
+    walletAddress,
+    side,
+    inputAmountUsd,
+    leverage,
+    symbol = 'SOL',
+    network,
+}) {
+    const { solana } = getConfig();
+    const net = network ?? solana.network ?? 'mainnet-beta';
+
+    try {
+        return await _buildOpenPositionTx({ walletAddress, side, inputAmountUsd, leverage, symbol, network: net });
+    } catch (err) {
+        logger.error('flash-trade.service: buildOpenPositionTx failed', {
+            error: err?.message ?? String(err),
+            stack: err?.stack,
+            walletAddress, side, symbol, leverage,
+        });
+        throw err;
+    }
+}
+
+async function _buildOpenPositionTx({
     walletAddress,
     side,
     inputAmountUsd,
@@ -285,16 +325,18 @@ async function buildOpenPositionTx({
         ...openPositionData.instructions,
     ];
 
-    // ── Fetch ALTs ────────────────────────────────────────────────────────────
-    const { addressLookupTables } = await flashClient.getOrLoadAddressLookupTable(POOL_CONFIG);
-
-    // ── Blockhash ─────────────────────────────────────────────────────────────
-    const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash('confirmed');
+    // ── Fetch ALTs and blockhash in parallel (both needed to build the tx) ────
+    // Blockhash is fetched last and in parallel to minimise staleness —
+    // Solana blockhashes expire after ~150 slots (~60s) and Privy re-simulates
+    // on broadcast, so we need it as fresh as possible.
+    const [{ addressLookupTables }, { blockhash, lastValidBlockHeight }] = await Promise.all([
+        flashClient.getOrLoadAddressLookupTable(POOL_CONFIG),
+        connection.getLatestBlockhash('finalized'), // 'finalized' is recognized by all RPC nodes
+    ]);
 
     // ── Build VersionedTransaction ────────────────────────────────────────────
     const messageV0 = new TransactionMessage({
-        payerKey:       walletPubkey,
+        payerKey:        walletPubkey,
         recentBlockhash: blockhash,
         instructions,
     }).compileToV0Message(addressLookupTables);
@@ -317,4 +359,108 @@ async function buildOpenPositionTx({
     return { base64Tx, blockhash, lastValidBlockHeight, estimatedPrice };
 }
 
-module.exports = { buildOpenPositionTx };
+// ─── Build Close-Position Transaction ────────────────────────────────────────
+
+/**
+ * Build a Flash Protocol closePosition transaction.
+ * Closes the user's open perpetual position and returns collateral as USDC.
+ *
+ * @param {Object} params
+ * @param {string} params.walletAddress
+ * @param {'long'|'short'} params.side
+ * @param {string} [params.symbol]     Token symbol, e.g. 'ETH'
+ * @param {string} [params.network]
+ * @returns {Promise<{base64Tx: string, exitPrice: number}>}
+ */
+async function buildClosePositionTx({ walletAddress, side, symbol = 'ETH', network }) {
+    const { solana } = getConfig();
+    const net = network ?? solana.network ?? 'mainnet-beta';
+
+    logger.info('Flash: building close-position transaction', { walletAddress, side, symbol, net });
+
+    const connection   = new Connection(solana.rpcUrl, 'confirmed');
+    const walletPubkey = new PublicKey(walletAddress);
+
+    const readOnlyWallet = {
+        publicKey:           walletPubkey,
+        signTransaction:     async () => { throw new Error('Use Privy to sign'); },
+        signAllTransactions: async () => { throw new Error('Use Privy to sign'); },
+    };
+
+    const provider = new AnchorProvider(connection, readOnlyWallet, {
+        commitment:          'confirmed',
+        preflightCommitment: 'confirmed',
+    });
+
+    const POOL_CONFIG = PoolConfig.fromIdsByName('Crypto.1', net === 'devnet' ? 'devnet' : 'mainnet-beta');
+
+    const flashClient = new PerpetualsClient(
+        provider,
+        POOL_CONFIG.programId,
+        POOL_CONFIG.perpComposibilityProgramId,
+        POOL_CONFIG.fbNftRewardProgramId,
+        POOL_CONFIG.rewardDistributionProgram.programId,
+        { prioritizationFee: 100000 },
+    );
+
+    const flashSide           = side === 'long' ? Side.Long : Side.Short;
+    const targetTokenSymbol   = symbol.toUpperCase();
+    const collateralSymbol    = 'USDC';
+
+    // Fetch current price for slippage calc
+    const priceMap      = await fetchPrices(POOL_CONFIG);
+    const tokenPriceObj = priceMap.get(targetTokenSymbol);
+    if (!tokenPriceObj) throw new Error(`Price not found for ${targetTokenSymbol}`);
+
+    const exitPrice = Number(tokenPriceObj.price.price.toString()) /
+        10 ** Math.abs(tokenPriceObj.price.exponent.toNumber());
+
+    const slippageBps        = 800; // 8%
+    const priceAfterSlippage = flashClient.getPriceAfterSlippage(
+        false, // isEntry=false for close
+        new BN(slippageBps),
+        tokenPriceObj.price,
+        flashSide,
+    );
+
+    // Build close instructions
+    const closeData = await flashClient.closePosition(
+        targetTokenSymbol,
+        collateralSymbol,
+        priceAfterSlippage,
+        flashSide,
+        POOL_CONFIG,
+        Privilege.None,
+    );
+
+    const instructions = [
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+        ...closeData.instructions,
+    ];
+
+    const [{ addressLookupTables }, { blockhash, lastValidBlockHeight }] = await Promise.all([
+        flashClient.getOrLoadAddressLookupTable(POOL_CONFIG),
+        connection.getLatestBlockhash('finalized'),
+    ]);
+
+    const messageV0 = new TransactionMessage({
+        payerKey:        walletPubkey,
+        recentBlockhash: blockhash,
+        instructions,
+    }).compileToV0Message(addressLookupTables);
+
+    const transaction = new VersionedTransaction(messageV0);
+
+    if (closeData.additionalSigners?.length > 0) {
+        transaction.sign(closeData.additionalSigners);
+    }
+
+    const base64Tx = Buffer.from(transaction.serialize()).toString('base64');
+
+    logger.info('Flash: close transaction built', { walletAddress, symbol, side, exitPrice });
+
+    return { base64Tx, exitPrice, blockhash, lastValidBlockHeight };
+}
+
+module.exports = { buildOpenPositionTx, buildClosePositionTx, getTokenPrice };

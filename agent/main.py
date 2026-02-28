@@ -2,9 +2,9 @@
 """
 Hastrology AI Agent
 -------------------
-A real agent that reads the astrological trading signal via the Hastrology API,
-uses Gemini to reason about it, and can execute trades fully autonomously via
-Privy delegated actions (no browser needed).
+Reads the astrological trading signal, gets Gemini's take, and executes
+the trade fully autonomously via the Hastrology backend (Privy server-side
+signing — no browser needed).
 
 Setup:
     cp .env.example .env      # fill in your keys
@@ -12,10 +12,10 @@ Setup:
     python main.py
 
 Flags:
-    --loop     Re-run every 60s (long-running autonomous agent)
-    --silent   Skip Gemini commentary, just show raw signal
-    --auto     Execute the trade automatically without prompting (autonomous mode)
-    --amount N USDC collateral per trade (default: 10)
+    --loop       Re-run every 60s (long-running autonomous agent)
+    --silent     Skip Gemini commentary, just show raw signal
+    --amount N   USDC collateral per trade (default: 10)
+    --manual     Interactive fallback — prompts instead of auto-executing
 """
 
 import os
@@ -33,9 +33,9 @@ load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-API_BASE    = os.getenv("HASTROLOGY_API_URL", "http://localhost:5001/api")
-API_KEY     = os.getenv("HASTROLOGY_API_KEY", "")
-GEMINI_KEY  = os.getenv("GEMINI_API_KEY", "")
+API_BASE   = os.getenv("HASTROLOGY_API_URL", "http://localhost:5001/api")
+API_KEY    = os.getenv("HASTROLOGY_API_KEY", "")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
@@ -50,6 +50,7 @@ YELLOW = "\033[93m"
 CYAN   = "\033[96m"
 ORANGE = "\033[38;5;208m"
 
+
 def banner():
     print(f"""
 {ORANGE}{BOLD}
@@ -59,14 +60,17 @@ def banner():
   ██╔══██║██╔══██║╚════██║   ██║   ██╔══██╗██║   ██║
   ██║  ██║██║  ██║███████║   ██║   ██║  ██║╚██████╔╝
   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝
-{RESET}{DIM}  AI Trading Agent — powered by Hastrology + Claude{RESET}
+{RESET}{DIM}  AI Trading Agent — powered by Hastrology + Gemini{RESET}
 """)
+
 
 def hr():
     print(f"{DIM}{'─' * 60}{RESET}")
 
+
 def label(text):
     return f"{DIM}{text}{RESET}"
+
 
 # ── API calls ─────────────────────────────────────────────────────────────────
 
@@ -81,6 +85,39 @@ def get_signal() -> dict:
     if r.status_code == 503:
         print(f"{YELLOW}⚠ AI server unavailable. Try again in a few minutes.{RESET}")
         sys.exit(1)
+    r.raise_for_status()
+    return r.json()
+
+
+def execute_trade(amount: float) -> dict:
+    """
+    Execute a trade server-side via Privy delegated actions.
+    Backend builds the Flash transaction, signs with the user's Privy
+    embedded wallet, and broadcasts — no browser interaction needed.
+    """
+    r = httpx.post(
+        f"{API_BASE}/agent/execute-trade",
+        headers=HEADERS,
+        json={"amount": amount},
+        timeout=60,
+    )
+    if r.status_code == 403:
+        print(f"{RED}✗ Autonomous trading not enabled.{RESET}")
+        print(f"  {DIM}Visit the /agent page and click 'Enable Autonomous Trading'.{RESET}")
+        sys.exit(1)
+    if r.status_code == 422:
+        print(f"{YELLOW}✗ Privy wallet not linked. Re-register via the frontend.{RESET}")
+        sys.exit(1)
+    if r.status_code == 409:
+        print(f"{GREEN}✓ Today's horoscope already verified — nothing to do.{RESET}\n")
+        return {}
+    if r.status_code == 429:
+        print(f"{RED}✗ Max trade retries reached for today.{RESET}\n")
+        return {}
+    if r.status_code == 502:
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        print(f"{RED}✗ Trade execution failed: {body.get('message', 'unknown error')}{RESET}\n")
+        return {}
     r.raise_for_status()
     return r.json()
 
@@ -106,43 +143,7 @@ def verify_trade(wallet_address: str, tx_sig: str, pnl_percent: float) -> dict:
     return r.json()
 
 
-def execute_trade_autonomous(amount: float) -> dict:
-    """
-    Execute a trade fully server-side via Privy delegated actions.
-    The backend builds the Flash transaction, signs with the user's Privy
-    embedded wallet, and broadcasts — no browser needed.
-
-    Requires:
-      - User has enabled autonomous trading (/agent page → Enable button)
-      - User's privy_wallet_id is stored in the database (auto-set on registration)
-    """
-    r = httpx.post(
-        f"{API_BASE}/agent/execute-trade",
-        headers=HEADERS,
-        json={"amount": amount},
-        timeout=60,  # transaction building + Pyth price fetch can be slow
-    )
-    if r.status_code == 403:
-        print(f"{RED}✗ Autonomous trading not enabled.{RESET}")
-        print(f"  {DIM}Visit the /agent page and click 'Enable Autonomous Trading' first.{RESET}")
-        sys.exit(1)
-    if r.status_code == 422:
-        print(f"{YELLOW}✗ Privy wallet not linked. Re-register via the frontend.{RESET}")
-        sys.exit(1)
-    if r.status_code == 409:
-        print(f"{GREEN}✓ Today's horoscope already verified — nothing to do.{RESET}")
-        return {}
-    if r.status_code == 429:
-        print(f"{RED}✗ Max trade retries reached for today.{RESET}")
-        return {}
-    if r.status_code == 502:
-        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-        print(f"{RED}✗ Trade execution failed: {body.get('message', 'unknown error')}{RESET}")
-        return {}
-    r.raise_for_status()
-    return r.json()
-
-# ── Claude reasoning ──────────────────────────────────────────────────────────
+# ── Gemini reasoning ──────────────────────────────────────────────────────────
 
 def gemini_recommendation(signal: dict) -> str:
     if not GEMINI_KEY:
@@ -187,6 +188,7 @@ Respond with just the recommendation text, no headers or bullet points."""
             print(f"\n{YELLOW}⚠  Gemini error: {err[:120]}{RESET}\n")
         return ""
 
+
 # ── Display ───────────────────────────────────────────────────────────────────
 
 def print_signal(signal: dict):
@@ -201,16 +203,15 @@ def print_signal(signal: dict):
     attempts  = signal.get("trade_attempts_today", 0)
     max_ret   = signal.get("max_retries", 2)
     last_at   = signal.get("last_trade_attempt_at")
-    trade_url = signal.get("trade_url", "")
 
-    dir_colour = GREEN if direction == "LONG" else RED
+    dir_colour  = GREEN if direction == "LONG" else RED
     luck_colour = GREEN if luck and luck > 65 else (YELLOW if luck and luck > 40 else RED)
 
     hr()
     print(f"  {BOLD}Today's Signal{RESET}   {label(signal.get('date', ''))}")
     hr()
-    lev_str     = f"{lev}x suggested  (max {lev_max}x)" if lev is not None else "N/A"
-    ticker_str  = ticker if ticker else "N/A  (horoscope may need refresh)"
+    lev_str    = f"{lev}x suggested  (max {lev_max}x)" if lev is not None else "N/A"
+    ticker_str = ticker if ticker else "N/A  (horoscope may need refresh)"
 
     print(f"  {label('Direction')}     {dir_colour}{BOLD}{direction}{RESET}")
     print(f"  {label('Ticker')}        {CYAN}{ticker_str}{RESET}")
@@ -226,14 +227,12 @@ def print_signal(signal: dict):
         ts = datetime.fromisoformat(last_at.replace("Z", "+00:00"))
         print(f"{DIM}(last: {ts.strftime('%H:%M UTC')}){RESET}", end="")
     print()
-
-    print(f"\n  {label('Execute at')}    {ORANGE}{trade_url}{RESET}")
     hr()
 
 
 def print_status(signal: dict):
-    should  = signal.get("should_trade")
-    verified = signal.get("already_verified")
+    verified  = signal.get("already_verified")
+    should    = signal.get("should_trade")
     can_retry = signal.get("can_retry")
 
     if verified:
@@ -243,41 +242,92 @@ def print_status(signal: dict):
     elif not can_retry:
         print(f"\n{RED}✗ Max retries reached for today ({signal.get('max_retries')}).{RESET}\n")
 
-# ── Autonomous flow ───────────────────────────────────────────────────────────
 
-def run_autonomous(signal: dict, amount: float):
-    """Fully autonomous execution — no prompts, no browser."""
-    direction = signal["direction"]
+# ── Execution flows ───────────────────────────────────────────────────────────
+
+def run_auto(signal: dict, amount: float):
+    """Default: executes the trade server-side via Privy — no prompts."""
+    direction = signal.get("direction", "?")
     ticker    = signal.get("ticker") or "?"
     lev       = signal.get("leverage_suggestion")
     lev_label = f"{lev}x" if lev is not None else "N/A"
 
-    print(f"\n  {BOLD}Autonomous mode{RESET} — executing trade server-side via Privy")
-    print(f"  {BOLD}{direction} {ticker} @ {lev_label}  collateral: ${amount} USDC{RESET}\n")
+    print(f"  {BOLD}Executing trade{RESET}  {direction} {ticker} @ {lev_label}  collateral: ${amount} USDC")
+    print(f"{DIM}Building transaction and signing via Privy...{RESET}\n")
 
-    print(f"{DIM}Building and signing transaction...{RESET}")
-    result = execute_trade_autonomous(amount)
-
+    result = execute_trade(amount)
     if not result:
-        return  # error already printed inside execute_trade_autonomous
+        return
 
-    tx_sig         = result.get("txSig", "")
-    est_price      = result.get("estimated_price")
-    explorer_url   = result.get("explorer_url", "")
-    attempts_now   = result.get("trade_attempts_today", "?")
-    max_ret        = result.get("max_retries", 2)
+    tx_sig       = result.get("txSig", "")
+    est_price    = result.get("estimated_price")
+    explorer_url = result.get("explorer_url", "")
+    attempts_now = result.get("trade_attempts_today", "?")
+    max_ret      = result.get("max_retries", 2)
 
     price_str = f"@ ${est_price:,.4f}" if est_price else ""
     print(f"{GREEN}✓ Trade executed on-chain!{RESET}  {direction} {ticker} {price_str}")
-    print(f"  txSig:    {CYAN}{tx_sig}{RESET}")
-    print(f"  Explorer: {ORANGE}{explorer_url}{RESET}")
-    print(f"  Attempt:  {attempts_now}/{max_ret}\n")
-    print(f"{DIM}Call POST /api/horoscope/verify once you know the P&L result.{RESET}\n")
+    print(f"  {label('txSig')}      {CYAN}{tx_sig}{RESET}")
+    print(f"  {label('Explorer')}   {ORANGE}{explorer_url}{RESET}")
+    print(f"  {label('Attempt')}    {attempts_now}/{max_ret}\n")
+    print(f"{DIM}The trade is live. P&L verification happens automatically via webhook.{RESET}\n")
 
 
-# ── Interactive flow ──────────────────────────────────────────────────────────
+def run_manual(signal: dict):
+    """Fallback interactive mode (--manual flag) — for wallets without Privy set up."""
+    direction = signal.get("direction", "?")
+    ticker    = signal.get("ticker") or "?"
+    lev       = signal.get("leverage_suggestion")
+    lev_label = f"{lev}x" if lev is not None else "N/A"
 
-def run(silent: bool = False, auto: bool = False, amount: float = 10.0):
+    if ticker == "?":
+        print(f"\n  {YELLOW}⚠  Ticker unknown — horoscope asset enrichment may need a refresh.{RESET}\n")
+
+    print(f"  Recommended trade: {BOLD}{direction} {ticker} @ {lev_label}{RESET}")
+    print(f"  Open {signal.get('trade_url', '')} to execute.\n")
+
+    answer = input(f"  Did you place the trade? {DIM}[y/n]{RESET} ").strip().lower()
+    if answer != "y":
+        print(f"\n{DIM}No trade recorded. Run again when ready.{RESET}\n")
+        return
+
+    tx_input = input(f"  Paste the transaction signature (or Enter for a test ID): ").strip()
+    tx_sig   = tx_input if tx_input else f"TEST_{uuid.uuid4().hex[:12].upper()}"
+
+    print(f"\n{DIM}Recording trade attempt...{RESET}")
+    result       = record_attempt(tx_sig, direction, lev or 1, ticker or "unknown")
+    attempts_now = result.get("trade_attempts_today", "?")
+    max_ret      = result.get("max_retries", 2)
+    print(f"{GREEN}✓ Recorded.{RESET}  Attempt {attempts_now}/{max_ret}  txSig: {DIM}{tx_sig}{RESET}\n")
+
+    answer2 = input(f"  Do you know the P&L result? {DIM}[y/n]{RESET} ").strip().lower()
+    if answer2 != "y":
+        print(f"\n{DIM}Call POST /api/horoscope/verify manually once you know the result.{RESET}\n")
+        return
+
+    wallet  = signal.get("wallet_address", "")
+    pnl_str = input(f"  Enter P&L % {DIM}(e.g. 4.8 for profit, -2.1 for loss){RESET}: ").strip()
+    try:
+        pnl = float(pnl_str)
+    except ValueError:
+        print(f"{RED}Invalid P&L. Skipping verification.{RESET}\n")
+        return
+
+    if pnl <= 0:
+        print(f"\n{YELLOW}⊘ Loss trade ({pnl}%) — horoscope not verified. Retry if can_retry is true.{RESET}\n")
+        return
+
+    print(f"\n{DIM}Verifying...{RESET}")
+    vr = verify_trade(wallet, tx_sig, pnl)
+    if vr.get("verified"):
+        print(f"{GREEN}Horoscope verified! Profitable trade confirmed.{RESET}\n")
+    else:
+        print(f"{YELLOW}⚠  Verification returned unexpected response: {vr}{RESET}\n")
+
+
+# ── Main loop ─────────────────────────────────────────────────────────────────
+
+def run(silent: bool = False, manual: bool = False, amount: float = 10.0):
     print(f"\n{DIM}Fetching signal...{RESET}")
     signal = get_signal()
 
@@ -296,67 +346,14 @@ def run(silent: bool = False, auto: bool = False, amount: float = 10.0):
     elif not GEMINI_KEY and not silent:
         print(f"{DIM}(Set GEMINI_API_KEY in .env to get Gemini's recommendation){RESET}\n")
 
-    # If nothing to do, stop here
+    # Nothing to do today
     if not signal.get("should_trade"):
         return
 
-    # ── Autonomous mode: execute without any prompts ──────────────────────────
-    if auto:
-        run_autonomous(signal, amount)
-        return
-
-    # ── Interactive mode (original flow) ─────────────────────────────────────
-    direction = signal["direction"]
-    ticker    = signal.get("ticker") or "?"
-    lev       = signal.get("leverage_suggestion")
-    lev_label = f"{lev}x" if lev is not None else "N/A"
-
-    if ticker == "?":
-        print(f"\n  {YELLOW}⚠  Ticker unknown — horoscope asset enrichment may need a refresh.{RESET}")
-        print(f"  {DIM}See README: delete today's horoscope row in Supabase to force regen.{RESET}\n")
-
-    print(f"  Recommended trade: {BOLD}{direction} {ticker} @ {lev_label}{RESET}")
-    print(f"  Open {signal['trade_url']} to execute.\n")
-
-    answer = input(f"  Did you place the trade? {DIM}[y/n]{RESET} ").strip().lower()
-    if answer != "y":
-        print(f"\n{DIM}No trade recorded. Run again when ready.{RESET}\n")
-        return
-
-    # ── Step 2: record attempt ───────────────────────────────────────────────
-    tx_input = input(f"  Paste the transaction signature (or press Enter to use a test ID): ").strip()
-    tx_sig = tx_input if tx_input else f"TEST_{uuid.uuid4().hex[:12].upper()}"
-
-    print(f"\n{DIM}Recording trade attempt...{RESET}")
-    result = record_attempt(tx_sig, direction, lev or 1, ticker or "unknown")
-    attempts_now = result.get("trade_attempts_today", "?")
-    max_ret = result.get("max_retries", 2)
-    print(f"{GREEN}✓ Recorded.{RESET}  Attempt {attempts_now}/{max_ret}  txSig: {DIM}{tx_sig}{RESET}\n")
-
-    # ── Step 3: verify (optional) ────────────────────────────────────────────
-    answer2 = input(f"  Do you know the P&L result? {DIM}[y/n]{RESET} ").strip().lower()
-    if answer2 != "y":
-        print(f"\n{DIM}Call POST /api/horoscope/verify manually once you know the result.{RESET}\n")
-        return
-
-    wallet = signal.get("wallet_address", "")
-    pnl_str = input(f"  Enter P&L % {DIM}(e.g. 4.8 for profit, -2.1 for loss){RESET}: ").strip()
-    try:
-        pnl = float(pnl_str)
-    except ValueError:
-        print(f"{RED}Invalid P&L. Skipping verification.{RESET}\n")
-        return
-
-    if pnl <= 0:
-        print(f"\n{YELLOW}⊘ Loss trade ({pnl}%) — horoscope not verified. You can retry if can_retry is true.{RESET}\n")
-        return
-
-    print(f"\n{DIM}Verifying...{RESET}")
-    vr = verify_trade(wallet, tx_sig, pnl)
-    if vr.get("verified"):
-        print(f"{GREEN}Horoscope verified! Profitable trade confirmed.{RESET}\n")
+    if manual:
+        run_manual(signal)
     else:
-        print(f"{YELLOW}⚠  Verification returned unexpected response: {vr}{RESET}\n")
+        run_auto(signal, amount)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -365,8 +362,8 @@ def main():
     parser = argparse.ArgumentParser(description="Hastrology AI Agent")
     parser.add_argument("--loop",   action="store_true", help="Poll every 60s")
     parser.add_argument("--silent", action="store_true", help="Skip Gemini commentary")
-    parser.add_argument("--auto",   action="store_true", help="Execute trades automatically without prompts (requires autonomous trading enabled in /agent page)")
-    parser.add_argument("--amount", type=float, default=10.0, help="USDC collateral per trade in autonomous mode (default: 10)")
+    parser.add_argument("--amount", type=float, default=10.0, help="USDC collateral per trade (default: 10)")
+    parser.add_argument("--manual", action="store_true", help="Interactive fallback — prompts instead of auto-executing (for wallets without Privy set up)")
     args = parser.parse_args()
 
     if not API_KEY or not API_KEY.startswith("hstro_sk_"):
@@ -379,13 +376,13 @@ def main():
         print(f"{DIM}Running in loop mode. Press Ctrl+C to stop.{RESET}\n")
         try:
             while True:
-                run(silent=args.silent, auto=args.auto, amount=args.amount)
+                run(silent=args.silent, manual=args.manual, amount=args.amount)
                 print(f"{DIM}Sleeping 60s...{RESET}\n")
                 time.sleep(60)
         except KeyboardInterrupt:
             print(f"\n{DIM}Stopped.{RESET}\n")
     else:
-        run(silent=args.silent, auto=args.auto, amount=args.amount)
+        run(silent=args.silent, manual=args.manual, amount=args.amount)
 
 
 if __name__ == "__main__":

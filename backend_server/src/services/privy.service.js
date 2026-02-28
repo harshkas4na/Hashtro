@@ -41,23 +41,39 @@ function getPrivyClient() {
 async function signAndSendTransaction(privyWalletId, base64Tx, network = 'mainnet-beta') {
     const privy  = getPrivyClient();
     const caip2  = CAIP2[network] ?? CAIP2['mainnet-beta'];
+    const { privy: privyConfig } = getConfig();
 
     logger.info('Privy: signing and sending transaction', { privyWalletId, network, caip2 });
 
+    // Build authorization context — required when a key quorum is added as signer.
+    // PRIVY_AUTHORIZATION_PRIVATE_KEY is the base64-encoded PKCS8 private key shown
+    // once when creating the authorization key in Privy Dashboard → Wallet infrastructure → Authorization keys.
+    const authorization_context = privyConfig.authorizationPrivateKey
+        ? { authorization_private_keys: [privyConfig.authorizationPrivateKey] }
+        : {};
+
     try {
-        const result = await privy.walletApi.solana.signAndSendTransaction(
+        const result = await privy.walletsService.solanaService.signAndSendTransaction(
             privyWalletId,
             {
                 caip2,
                 transaction: base64Tx,
+                authorization_context,
             },
         );
 
-        const txSig = result.data.hash;
+        logger.info('Privy: raw result', { privyWalletId, result: JSON.stringify(result) });
+        const txSig = result?.hash ?? result?.signature ?? result?.data?.hash ?? result?.data?.signature;
         logger.info('Privy: transaction broadcast', { privyWalletId, txSig });
         return txSig;
     } catch (err) {
-        logger.error('Privy: signAndSendTransaction failed', { privyWalletId, error: err.message });
+        const detail = err?.message ?? err?.error ?? JSON.stringify(err);
+        logger.error('Privy: signAndSendTransaction failed', {
+            privyWalletId,
+            error:  detail,
+            status: err?.status ?? err?.statusCode,
+            body:   err?.body   ?? err?.response?.body ?? undefined,
+        });
         throw err;
     }
 }

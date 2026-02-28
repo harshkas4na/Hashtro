@@ -228,11 +228,12 @@ export const api = {
 	async setTradingDelegated(
 		walletAddress: string,
 		delegated: boolean,
+		privyIds?: { privyUserId?: string; privyWalletId?: string },
 	): Promise<{ trading_delegated: boolean; message: string }> {
 		const res = await fetch(`${API_BASE}/user/trading-delegated`, {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ walletAddress, delegated }),
+			body: JSON.stringify({ walletAddress, delegated, ...privyIds }),
 		});
 		if (!res.ok) await throwApiError(res, "Failed to update trading delegation");
 		return res.json();
