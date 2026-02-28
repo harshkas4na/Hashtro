@@ -5,7 +5,7 @@ const aiService = require('../services/ai.service');
 const twitterService = require('../services/twitter.service');
 const webhookService = require('../services/webhook.service');
 const privyService = require('../services/privy.service');
-const flashTradeService = require('../services/flash-trade.service');
+const { buildOpenPositionTx, buildClosePositionTx, getTokenPrice } = require('../services/flash-trade.service');
 const { getConfig } = require('../config/environment');
 const { successResponse, errorResponse } = require('../utils/response');
 const logger = require('../config/logger');
@@ -13,7 +13,7 @@ const logger = require('../config/logger');
 // Maximum USDC collateral per autonomous trade (safety cap)
 const MAX_TRADE_AMOUNT_USD = 1000;
 
-const AGENT_MAX_RETRIES = 2;
+const AGENT_MAX_RETRIES = 10;
 
 // ─── Asset mapping (lucky_color → ticker) ─────────────────────────────────────
 // Mirrors the same mapping used by the AI server and the frontend.
@@ -100,6 +100,109 @@ function buildSignal(card, alreadyVerified, tradeAttemptsToday) {
         max_retries:         AGENT_MAX_RETRIES,
         can_retry:           canRetry,
     };
+}
+
+const { Connection } = require('@solana/web3.js');
+
+const CLOSE_DELAY_MS      = 30_000;  // wait after open before closing
+const CLOSE_MAX_ATTEMPTS  = 4;       // retry close up to 4 times
+const CLOSE_RETRY_DELAY   = 15_000;  // 15s between close retries
+
+/**
+ * Auto-close a position after a delay, calculate P&L, and verify the horoscope.
+ * Runs fire-and-forget after executeTrade() responds to the client.
+ */
+async function autoCloseAndVerify({ walletAddress, side, symbol, entryPrice, leverage, privyWalletId, network, openTxSig }) {
+    const { solana } = getConfig();
+    const connection = new Connection(solana.rpcUrl, 'confirmed');
+
+    logger.info('Agent auto-close: scheduled', { walletAddress, symbol, side, entryPrice, openTxSig });
+
+    // ── Step 1: confirm the open transaction is on-chain ─────────────────────
+    try {
+        logger.info('Agent auto-close: waiting for open tx confirmation', { openTxSig });
+        const result = await connection.confirmTransaction(openTxSig, 'confirmed');
+        if (result?.value?.err) {
+            logger.error('Agent auto-close: open tx failed on-chain — aborting close', {
+                walletAddress, openTxSig, err: result.value.err,
+            });
+            return;
+        }
+        logger.info('Agent auto-close: open tx confirmed', { openTxSig });
+    } catch (err) {
+        logger.warn('Agent auto-close: could not confirm open tx, proceeding anyway', { openTxSig, error: err?.message });
+    }
+
+    // ── Step 2: wait 30s for position to fully settle ─────────────────────────
+    logger.info(`Agent auto-close: waiting ${CLOSE_DELAY_MS / 1000}s before closing`, { walletAddress });
+    await new Promise((resolve) => setTimeout(resolve, CLOSE_DELAY_MS));
+
+    // ── Step 3: build + sign close tx (with retries) ─────────────────────────
+    let closeTxSig;
+    let closeExitPrice;
+
+    for (let attempt = 1; attempt <= CLOSE_MAX_ATTEMPTS; attempt++) {
+        logger.info(`Agent auto-close: close attempt ${attempt}/${CLOSE_MAX_ATTEMPTS}`, { walletAddress });
+
+        try {
+            const closeResult = await buildClosePositionTx({ walletAddress, side, symbol, network });
+            closeExitPrice    = closeResult.exitPrice;
+
+            closeTxSig = await privyService.signAndSendTransaction(
+                privyWalletId,
+                closeResult.base64Tx,
+                network,
+            );
+
+            logger.info('Agent auto-close: close tx broadcast', { walletAddress, closeTxSig, exitPrice: closeExitPrice });
+            break; // success — exit retry loop
+
+        } catch (err) {
+            const detail = err?.message ?? JSON.stringify(err);
+            logger.error(`Agent auto-close: attempt ${attempt} failed`, { walletAddress, error: detail });
+
+            if (attempt < CLOSE_MAX_ATTEMPTS) {
+                logger.info(`Agent auto-close: retrying in ${CLOSE_RETRY_DELAY / 1000}s`, { walletAddress });
+                await new Promise((resolve) => setTimeout(resolve, CLOSE_RETRY_DELAY));
+            }
+        }
+    }
+
+    if (!closeTxSig) {
+        logger.error('Agent auto-close: all close attempts failed — giving up', { walletAddress });
+        return;
+    }
+
+    // ── Step 4: calculate P&L % from entry vs exit price ─────────────────────
+    const priceDelta = closeExitPrice - entryPrice;
+    const pnlRaw     = side === 'long'
+        ? (priceDelta / entryPrice) * leverage * 100
+        : (-priceDelta / entryPrice) * leverage * 100;
+    const pnlPercent = Math.round(pnlRaw * 100) / 100;
+
+    logger.info('Agent auto-close: P&L calculated', {
+        walletAddress, entryPrice, exitPrice: closeExitPrice, pnlPercent, side, leverage,
+    });
+
+    // ── Step 5: verify horoscope ──────────────────────────────────────────────
+    try {
+        const horoscopeService = require('../services/horoscope.service');
+        const verified = await horoscopeService.verifyHoroscope(walletAddress, closeTxSig, pnlPercent);
+
+        logger.info('Agent auto-close: horoscope verification result', { walletAddress, pnlPercent, verified });
+
+        // ── Step 6: fire webhook ──────────────────────────────────────────────
+        webhookService.deliver(walletAddress, 'trade_verified', {
+            closeTxSig,
+            entryPrice,
+            exitPrice: closeExitPrice,
+            pnlPercent,
+            verified,
+        }).catch(() => {});
+
+    } catch (err) {
+        logger.error('Agent auto-close: horoscope verification failed', { walletAddress, error: err?.message });
+    }
 }
 
 /**
@@ -374,14 +477,8 @@ class AgentController {
             const walletAddress = req.agentWallet;
             const { amount } = req.body;
 
-            // ── Validate amount ───────────────────────────────────────────────
-            const collateralUsd = Number(amount);
-            if (!collateralUsd || collateralUsd <= 0) {
-                return errorResponse(res, 'amount must be a positive number (USDC collateral)', 400);
-            }
-            if (collateralUsd > MAX_TRADE_AMOUNT_USD) {
-                return errorResponse(res, `amount exceeds the per-trade cap of $${MAX_TRADE_AMOUNT_USD}`, 400);
-            }
+            // ── Collateral (hardcoded) ────────────────────────────────────────
+            const collateralUsd = 2; // hardcoded to $2 USDC
 
             // ── Load user + check delegation ──────────────────────────────────
             const user = await userService.findUserByWallet(walletAddress);
@@ -419,14 +516,14 @@ class AgentController {
             // ── Build signal to get direction + ticker + leverage ─────────────
             const signal = buildSignal(horoscope.cards, horoscope.verified, tradeAttempts);
 
-            if (!signal.direction || !signal.ticker) {
-                return errorResponse(res, 'Signal is incomplete — missing direction or ticker.', 422);
+            if (!signal.direction) {
+                return errorResponse(res, 'Signal is incomplete — missing direction.', 422);
             }
 
             const { solana } = getConfig();
             const side     = signal.direction === 'LONG' ? 'long' : 'short';
             const leverage = signal.leverage_suggestion ?? 1;
-            const symbol   = signal.ticker;
+            const symbol   = 'ETH'; // hardcoded for now
 
             logger.info('Agent execute-trade: building transaction', {
                 walletAddress, side, leverage, symbol, collateralUsd,
@@ -435,7 +532,7 @@ class AgentController {
             // ── Build Flash transaction (server-side) ─────────────────────────
             let buildResult;
             try {
-                buildResult = await flashTradeService.buildOpenPositionTx({
+                buildResult = await buildOpenPositionTx({
                     walletAddress,
                     side,
                     inputAmountUsd: collateralUsd,
@@ -444,8 +541,13 @@ class AgentController {
                     network: solana.network,
                 });
             } catch (buildErr) {
-                logger.error('Agent execute-trade: transaction build failed', { walletAddress, error: buildErr.message });
-                return errorResponse(res, `Failed to build trade transaction: ${buildErr.message}`, 502);
+                const errMsg = buildErr instanceof Error
+                    ? buildErr.message
+                    : typeof buildErr === 'string'
+                        ? buildErr
+                        : JSON.stringify(buildErr);
+                logger.error('Agent execute-trade: transaction build failed', { walletAddress, error: errMsg, stack: buildErr?.stack });
+                return errorResponse(res, `Failed to build trade transaction: ${errMsg}`, 502);
             }
 
             // ── Sign + broadcast via Privy ────────────────────────────────────
@@ -475,21 +577,32 @@ class AgentController {
 
             logger.info('Agent execute-trade: success', { walletAddress, txSig, side, symbol, leverage });
 
-            const explorerBase = solana.network === 'devnet'
-                ? 'https://solscan.io/tx'
-                : 'https://solscan.io/tx';
+            // ── Schedule auto-close + P&L verification after 30s ─────────────
+            autoCloseAndVerify({
+                walletAddress,
+                side,
+                symbol,
+                entryPrice:    buildResult.estimatedPrice,
+                leverage,
+                privyWalletId: user.privy_wallet_id,
+                network:       solana.network,
+                openTxSig:     txSig,
+            }).catch((err) => logger.error('autoCloseAndVerify unhandled error', { error: err?.message }));
+
+            const explorerBase = 'https://solscan.io/tx';
 
             return successResponse(res, {
-                executed:           true,
+                executed:             true,
                 txSig,
-                direction:          signal.direction,
-                ticker:             symbol,
+                direction:            signal.direction,
+                ticker:               symbol,
                 leverage,
-                collateral_usd:     collateralUsd,
-                estimated_price:    buildResult.estimatedPrice,
+                collateral_usd:       collateralUsd,
+                estimated_price:      buildResult.estimatedPrice,
                 trade_attempts_today: attemptResult.trade_attempts,
-                can_retry:          attemptResult.trade_attempts < AGENT_MAX_RETRIES,
-                explorer_url:       `${explorerBase}/${txSig}`,
+                can_retry:            attemptResult.trade_attempts < AGENT_MAX_RETRIES,
+                explorer_url:         `${explorerBase}/${txSig}`,
+                auto_close_in:        '30s',
             });
         } catch (error) {
             logger.error('executeTrade controller error:', error);

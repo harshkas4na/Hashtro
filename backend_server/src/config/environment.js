@@ -44,6 +44,8 @@ const envSchema = Joi.object({
         .description('Privy App ID for server-side wallet operations'),
     PRIVY_APP_SECRET: Joi.string().optional()
         .description('Privy App Secret for server-side wallet operations'),
+    PRIVY_AUTHORIZATION_PRIVATE_KEY: Joi.string().optional()
+        .description('Base64-encoded PKCS8 private key for the Privy authorization key quorum (shown once when creating the key in Privy Dashboard → Wallet infrastructure → Authorization keys)'),
 
     // Solana
     SOLANA_RPC_URL: Joi.string().uri().default('https://api.mainnet-beta.solana.com')
@@ -107,6 +109,7 @@ const getConfig = () => {
         privy: {
             appId: env.PRIVY_APP_ID,
             appSecret: env.PRIVY_APP_SECRET,
+            authorizationPrivateKey: env.PRIVY_AUTHORIZATION_PRIVATE_KEY,
         },
         solana: {
             rpcUrl: env.SOLANA_RPC_URL,

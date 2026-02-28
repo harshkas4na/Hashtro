@@ -403,7 +403,7 @@ class UserController {
    */
   async setTradingDelegated(req, res, next) {
     try {
-      const { walletAddress, delegated } = req.body;
+      const { walletAddress, delegated, privyUserId, privyWalletId } = req.body;
 
       if (!walletAddress || typeof delegated !== 'boolean') {
         return errorResponse(res, 'walletAddress and delegated (boolean) are required', 400);
@@ -414,7 +414,7 @@ class UserController {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const updated = await userService.setTradingDelegated(walletAddress, delegated);
+      const updated = await userService.setTradingDelegated(walletAddress, delegated, { privyUserId, privyWalletId });
 
       logger.info('Trading delegation status updated', { walletAddress, delegated });
 
