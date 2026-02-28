@@ -4,9 +4,14 @@ const horoscopeService = require('../services/horoscope.service');
 const aiService = require('../services/ai.service');
 const twitterService = require('../services/twitter.service');
 const webhookService = require('../services/webhook.service');
+const privyService = require('../services/privy.service');
+const flashTradeService = require('../services/flash-trade.service');
 const { getConfig } = require('../config/environment');
 const { successResponse, errorResponse } = require('../utils/response');
 const logger = require('../config/logger');
+
+// Maximum USDC collateral per autonomous trade (safety cap)
+const MAX_TRADE_AMOUNT_USD = 1000;
 
 const AGENT_MAX_RETRIES = 2;
 
@@ -355,6 +360,139 @@ class AgentController {
             return successResponse(res, { webhooks });
         } catch (error) {
             logger.error('listWebhooks controller error:', error);
+            next(error);
+        }
+    }
+
+    /**
+     * Execute a Flash Protocol trade autonomously using Privy delegated actions.
+     * Builds the transaction server-side, signs via Privy enclave, broadcasts on Solana.
+     * @route POST /api/agent/execute-trade
+     */
+    async executeTrade(req, res, next) {
+        try {
+            const walletAddress = req.agentWallet;
+            const { amount } = req.body;
+
+            // ── Validate amount ───────────────────────────────────────────────
+            const collateralUsd = Number(amount);
+            if (!collateralUsd || collateralUsd <= 0) {
+                return errorResponse(res, 'amount must be a positive number (USDC collateral)', 400);
+            }
+            if (collateralUsd > MAX_TRADE_AMOUNT_USD) {
+                return errorResponse(res, `amount exceeds the per-trade cap of $${MAX_TRADE_AMOUNT_USD}`, 400);
+            }
+
+            // ── Load user + check delegation ──────────────────────────────────
+            const user = await userService.findUserByWallet(walletAddress);
+            if (!user) {
+                return errorResponse(res, 'User not found. Please register first.', 404);
+            }
+            if (!user.privy_wallet_id) {
+                return errorResponse(
+                    res,
+                    'Privy wallet not linked. Please re-register via the frontend to enable autonomous trading.',
+                    422,
+                );
+            }
+            if (!user.trading_delegated) {
+                return errorResponse(
+                    res,
+                    'Autonomous trading is not enabled. Visit /agent in the app and click "Enable Autonomous Trading".',
+                    403,
+                );
+            }
+
+            // ── Check today's horoscope ───────────────────────────────────────
+            const horoscope = await horoscopeService.getHoroscope(walletAddress);
+            if (!horoscope) {
+                return errorResponse(res, 'No horoscope for today. Call GET /api/agent/signal first.', 404);
+            }
+            if (horoscope.verified) {
+                return errorResponse(res, 'Today\'s horoscope is already verified. No further trades needed.', 409);
+            }
+            const tradeAttempts = horoscope.trade_attempts ?? 0;
+            if (tradeAttempts >= AGENT_MAX_RETRIES) {
+                return errorResponse(res, `Max retries (${AGENT_MAX_RETRIES}) reached for today.`, 429);
+            }
+
+            // ── Build signal to get direction + ticker + leverage ─────────────
+            const signal = buildSignal(horoscope.cards, horoscope.verified, tradeAttempts);
+
+            if (!signal.direction || !signal.ticker) {
+                return errorResponse(res, 'Signal is incomplete — missing direction or ticker.', 422);
+            }
+
+            const { solana } = getConfig();
+            const side     = signal.direction === 'LONG' ? 'long' : 'short';
+            const leverage = signal.leverage_suggestion ?? 1;
+            const symbol   = signal.ticker;
+
+            logger.info('Agent execute-trade: building transaction', {
+                walletAddress, side, leverage, symbol, collateralUsd,
+            });
+
+            // ── Build Flash transaction (server-side) ─────────────────────────
+            let buildResult;
+            try {
+                buildResult = await flashTradeService.buildOpenPositionTx({
+                    walletAddress,
+                    side,
+                    inputAmountUsd: collateralUsd,
+                    leverage,
+                    symbol,
+                    network: solana.network,
+                });
+            } catch (buildErr) {
+                logger.error('Agent execute-trade: transaction build failed', { walletAddress, error: buildErr.message });
+                return errorResponse(res, `Failed to build trade transaction: ${buildErr.message}`, 502);
+            }
+
+            // ── Sign + broadcast via Privy ────────────────────────────────────
+            let txSig;
+            try {
+                txSig = await privyService.signAndSendTransaction(
+                    user.privy_wallet_id,
+                    buildResult.base64Tx,
+                    solana.network,
+                );
+            } catch (privyErr) {
+                logger.error('Agent execute-trade: Privy signing failed', { walletAddress, error: privyErr.message });
+                return errorResponse(res, `Privy signing failed: ${privyErr.message}`, 502);
+            }
+
+            // ── Record attempt ────────────────────────────────────────────────
+            const attemptResult = await horoscopeService.recordTradeAttempt(walletAddress);
+
+            // ── Fire webhook (fire-and-forget) ────────────────────────────────
+            webhookService.deliver(walletAddress, 'trade_executed', {
+                txSig,
+                direction: signal.direction,
+                ticker:    symbol,
+                leverage,
+                collateral_usd: collateralUsd,
+            }).catch(() => {});
+
+            logger.info('Agent execute-trade: success', { walletAddress, txSig, side, symbol, leverage });
+
+            const explorerBase = solana.network === 'devnet'
+                ? 'https://solscan.io/tx'
+                : 'https://solscan.io/tx';
+
+            return successResponse(res, {
+                executed:           true,
+                txSig,
+                direction:          signal.direction,
+                ticker:             symbol,
+                leverage,
+                collateral_usd:     collateralUsd,
+                estimated_price:    buildResult.estimatedPrice,
+                trade_attempts_today: attemptResult.trade_attempts,
+                can_retry:          attemptResult.trade_attempts < AGENT_MAX_RETRIES,
+                explorer_url:       `${explorerBase}/${txSig}`,
+            });
+        } catch (error) {
+            logger.error('executeTrade controller error:', error);
             next(error);
         }
     }

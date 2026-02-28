@@ -227,4 +227,37 @@ router.post(
   userController.addTradeTime
 );
 
+/**
+ * @swagger
+ * /user/trading-delegated:
+ *   patch:
+ *     summary: Enable or disable autonomous trading
+ *     description: |
+ *       Called by the frontend after the user approves or revokes Privy's
+ *       delegateWallet(). When enabled, the agent can execute Flash Protocol
+ *       trades server-side on behalf of the user without a browser session.
+ *     tags: [User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [walletAddress, delegated]
+ *             properties:
+ *               walletAddress:
+ *                 $ref: '#/components/schemas/WalletAddress'
+ *               delegated:
+ *                 type: boolean
+ *                 example: true
+ *     responses:
+ *       200:
+ *         description: Delegation status updated
+ *       400:
+ *         description: Missing or invalid fields
+ *       404:
+ *         description: User not found
+ */
+router.patch("/trading-delegated", authLimiter, userController.setTradingDelegated);
+
 module.exports = router;

@@ -57,9 +57,11 @@ export const api = {
 	},
 
 	/**
-	 * Register a new user with birth details
+	 * Register a new user with birth details.
+	 * privyUserId and privyWalletId are stored so the backend can sign
+	 * transactions server-side via Privy delegated actions.
 	 */
-	async registerUser(data: BirthDetails): Promise<{ user: User }> {
+	async registerUser(data: BirthDetails & { privyUserId?: string; privyWalletId?: string }): Promise<{ user: User }> {
 		const res = await fetch(`${API_BASE}/user/register`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -214,6 +216,51 @@ export const api = {
 			await throwApiError(res, "Failed to update trade time");
 		}
 
+		return res.json();
+	},
+
+	// ─── Autonomous trading ───────────────────────────────────────────────────────
+
+	/**
+	 * Enable or disable autonomous (server-side) trading for a wallet.
+	 * Call this after the user approves/revokes Privy's delegateWallet().
+	 */
+	async setTradingDelegated(
+		walletAddress: string,
+		delegated: boolean,
+	): Promise<{ trading_delegated: boolean; message: string }> {
+		const res = await fetch(`${API_BASE}/user/trading-delegated`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ walletAddress, delegated }),
+		});
+		if (!res.ok) await throwApiError(res, "Failed to update trading delegation");
+		return res.json();
+	},
+
+	/**
+	 * Execute a trade autonomously using the agent's API key.
+	 * The backend builds the Flash transaction, signs via Privy, and broadcasts.
+	 */
+	async executeAgentTrade(
+		apiKey: string,
+		amount: number,
+	): Promise<{
+		executed: boolean;
+		txSig: string;
+		direction: string;
+		ticker: string;
+		leverage: number;
+		collateral_usd: number;
+		estimated_price: number;
+		explorer_url: string;
+	}> {
+		const res = await fetch(`${API_BASE}/agent/execute-trade`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+			body: JSON.stringify({ amount }),
+		});
+		if (!res.ok) await throwApiError(res, "Failed to execute trade");
 		return res.json();
 	},
 

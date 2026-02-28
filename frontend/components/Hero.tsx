@@ -25,12 +25,23 @@ export const Hero: FC = () => {
 	const { login } = useLogin({
 		onComplete(user) {
 			if (user?.user?.twitter?.username && user?.user?.wallet) {
+				// Resolve Privy wallet ID from linked accounts (needed for delegated actions).
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const linkedWallet = user.user.linkedAccounts?.find(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					(a: any) => a.type === "wallet" && a.walletClientType === "privy",
+				);
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const privyWalletId = (linkedWallet as any)?.id as string | undefined;
+
 				api.registerUser({
 					username: user.user.twitter.name ?? "",
 					walletAddress: user.user.wallet.address,
 					twitterId: user.user.twitter.subject,
 					twitterProfileUrl: user.user.twitter.profilePictureUrl ?? "",
 					twitterUsername: user.user.twitter.username,
+					privyUserId: user.user.id,
+					privyWalletId,
 				});
 				router.push("/login");
 			}

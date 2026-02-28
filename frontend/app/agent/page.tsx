@@ -1,5 +1,6 @@
 "use client";
 
+import { useHeadlessDelegatedActions } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { FC, useCallback, useEffect, useRef, useState } from "react";
 import { WalletDropdown } from "@/components/wallet-dropdown";
@@ -175,8 +176,14 @@ const SecretRevealModal: FC<SecretRevealModalProps> = ({ secret, webhookId, url,
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const AgentPage: FC = () => {
-	const { publicKey } = usePrivyWallet();
+	const { publicKey, walletId } = usePrivyWallet();
 	const router = useRouter();
+	const { delegateWallet, revokeWallets } = useHeadlessDelegatedActions();
+
+	// ── Delegation state ──────────────────────────────────────────────────────
+	const [isDelegated, setIsDelegated] = useState(false);
+	const [delegating, setDelegating] = useState(false);
+	const [revoking, setRevoking] = useState(false);
 
 	// ── API keys ──────────────────────────────────────────────────────────────
 	const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -220,6 +227,52 @@ const AgentPage: FC = () => {
 		wasConnected.current = !!publicKey;
 	}, [publicKey, router]);
 
+	// ── Load delegation status from profile ────────────────────────────────────
+	useEffect(() => {
+		if (!publicKey) return;
+		api.getUserProfile(publicKey).then((res) => {
+			if (res?.user) {
+				// @ts-expect-error tradingDelegated is returned by backend but not yet in the User type
+				setIsDelegated(res.user.tradingDelegated ?? false);
+			}
+		}).catch(() => {});
+	}, [publicKey]);
+
+	// ── Enable autonomous trading ─────────────────────────────────────────────
+	const handleEnableDelegation = async () => {
+		if (!publicKey || !walletId) {
+			toast("Wallet not ready. Please reconnect.", "error");
+			return;
+		}
+		setDelegating(true);
+		try {
+			await delegateWallet({ address: publicKey, chainType: "solana" });
+			await api.setTradingDelegated(publicKey, true);
+			setIsDelegated(true);
+			toast("Autonomous trading enabled");
+		} catch (err) {
+			toast(err instanceof Error ? err.message : "Failed to enable delegation", "error");
+		} finally {
+			setDelegating(false);
+		}
+	};
+
+	// ── Disable autonomous trading ────────────────────────────────────────────
+	const handleRevokeDelegation = async () => {
+		if (!publicKey) return;
+		setRevoking(true);
+		try {
+			await revokeWallets();
+			await api.setTradingDelegated(publicKey, false);
+			setIsDelegated(false);
+			toast("Autonomous trading disabled");
+		} catch (err) {
+			toast(err instanceof Error ? err.message : "Failed to revoke delegation", "error");
+		} finally {
+			setRevoking(false);
+		}
+	};
+
 	// ── Load keys ─────────────────────────────────────────────────────────────
 	const fetchKeys = useCallback(async () => {
 		if (!publicKey) return;
@@ -248,7 +301,7 @@ const AgentPage: FC = () => {
 			const { webhooks: fetched } = await api.listWebhooks(key);
 			setWebhooks(fetched);
 		} catch (err) {
-			toast(err instanceof ApiError ? err.message : "Failed to load webhooks", "error");
+			console.error(err instanceof ApiError ? err.message : "Failed to load webhooks", "error");
 		} finally {
 			setLoadingWebhooks(false);
 		}
@@ -368,6 +421,57 @@ const AgentPage: FC = () => {
 						Connect any AI agent to read your signal and recommend trades on your behalf.
 					</p>
 				</div>
+
+				{/* ── Section 0: Autonomous Trading ─────────────────────────────── */}
+				<section>
+					<h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-3">Autonomous Trading</h2>
+					<div className="bg-[#141414] border border-neutral-700 rounded-2xl p-5">
+						<div className="flex items-start justify-between gap-4">
+							<div className="min-w-0">
+								<div className="flex items-center gap-2 mb-1">
+									<div className={`w-2 h-2 rounded-full shrink-0 ${isDelegated ? "bg-green-500" : "bg-neutral-600"}`} />
+									<p className="text-sm font-medium text-white">
+										{isDelegated ? "Enabled" : "Not enabled"}
+									</p>
+								</div>
+								<p className="text-xs text-neutral-500 leading-relaxed">
+									{isDelegated
+										? "The agent can execute Flash Protocol trades on your behalf using your embedded wallet. You can revoke access at any time."
+										: "Grant the agent one-time permission to sign trades server-side. Your private key never leaves Privy's secure enclave."}
+								</p>
+							</div>
+							<div className="shrink-0">
+								{isDelegated ? (
+									<button
+										onClick={handleRevokeDelegation}
+										disabled={revoking}
+										className="px-4 py-2 rounded-xl text-sm font-medium text-red-400 border border-red-400/30 hover:bg-red-400/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+										type="button"
+									>
+										{revoking ? "Revoking…" : "Revoke"}
+									</button>
+								) : (
+									<button
+										onClick={handleEnableDelegation}
+										disabled={delegating}
+										className="px-4 py-2 rounded-xl text-sm font-medium bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+										type="button"
+									>
+										{delegating ? "Enabling…" : "Enable"}
+									</button>
+								)}
+							</div>
+						</div>
+						{isDelegated && (
+							<div className="mt-4 flex items-start gap-2 bg-green-500/5 border border-green-500/20 rounded-xl px-4 py-3">
+								<svg className="w-4 h-4 text-green-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><title>Info</title><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+								<p className="text-xs text-green-300 leading-relaxed">
+									Your agent can now call <code className="bg-green-900/30 px-1 rounded">POST /api/agent/execute-trade</code> with an <code className="bg-green-900/30 px-1 rounded">amount</code> (USDC). Direction, ticker, and leverage come from today's signal automatically.
+								</p>
+							</div>
+						)}
+					</div>
+				</section>
 
 				{/* ── Section 1: Connect your AI agent ──────────────────────────── */}
 				<section>

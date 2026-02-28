@@ -306,6 +306,18 @@ BEGIN
   END IF;
 END $$;
 
+-- Migration: Privy delegated-action columns on users.
+-- privy_user_id   : Privy's DID string (did:privy:...) — needed to look up the user in Privy.
+-- privy_wallet_id : Internal Privy wallet UUID — required by @privy-io/node signAndSendTransaction().
+-- trading_delegated: Set to true after the user approves delegateWallet() in the frontend.
+--                    execute-trade endpoint enforces this flag before signing anything.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS privy_user_id     TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS privy_wallet_id   TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS trading_delegated BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS idx_users_privy_wallet ON users(privy_wallet_id)
+  WHERE privy_wallet_id IS NOT NULL;
+
 -- Migration: Agent API Keys table.
 -- Agents (e.g. OpenClaw) authenticate with a bearer token so they can read
 -- horoscope signals on behalf of a user without needing the user's private key.

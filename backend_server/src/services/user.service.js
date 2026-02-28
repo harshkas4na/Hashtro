@@ -26,28 +26,36 @@ class UserService {
     latitude,
     longitude,
     timezoneOffset,
+    privyUserId,
+    privyWalletId,
   }) {
     try {
       logger.info("Registering user:", { walletAddress });
+
+      const upsertData = {
+        wallet_address: walletAddress,
+        updated_at: new Date().toISOString(),
+        username: username,
+        twitter_id: twitterId,
+        twitter_username: twitterUsername,
+        twitter_profile_url: twitterProfileUrl,
+        dob: dob,
+        birth_time: birthTime,
+        birth_place: birthPlace,
+        latitude: latitude,
+        longitude: longitude,
+        timezone_offset: timezoneOffset,
+      };
+
+      // Only set Privy IDs when provided (avoid overwriting with null on subsequent calls)
+      if (privyUserId)   upsertData.privy_user_id   = privyUserId;
+      if (privyWalletId) upsertData.privy_wallet_id = privyWalletId;
 
       // Use upsert to create or update user
       const { data, error } = await this.supabase
         .from("users")
         .upsert(
-          {
-            wallet_address: walletAddress,
-            updated_at: new Date().toISOString(),
-            username: username,
-            twitter_id: twitterId,
-            twitter_username: twitterUsername,
-            twitter_profile_url: twitterProfileUrl,
-            dob: dob,
-            birth_time: birthTime,
-            birth_place: birthPlace,
-            latitude: latitude,
-            longitude: longitude,
-            timezone_offset: timezoneOffset,
-          },
+          upsertData,
           {
             onConflict: "wallet_address",
             returning: "representation",
@@ -353,6 +361,37 @@ class UserService {
       return data;
     } catch (error) {
       logger.error("Update trade time error:", error);
+      throw error;
+    }
+  }
+  /**
+   * Enable or disable autonomous trading for a user.
+   * Called by the frontend after the user approves/revokes Privy delegateWallet().
+   * @param {string} walletAddress
+   * @param {boolean} delegated
+   * @returns {Promise<Object>} Updated user
+   */
+  async setTradingDelegated(walletAddress, delegated) {
+    try {
+      const { data, error } = await this.supabase
+        .from("users")
+        .update({
+          trading_delegated: delegated,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("wallet_address", walletAddress)
+        .select("wallet_address, trading_delegated")
+        .single();
+
+      if (error) {
+        logger.error("setTradingDelegated error:", error);
+        throw error;
+      }
+
+      logger.info("Trading delegated status updated:", { walletAddress, delegated });
+      return data;
+    } catch (error) {
+      logger.error("setTradingDelegated service error:", error);
       throw error;
     }
   }
