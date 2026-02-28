@@ -1,6 +1,6 @@
 "use client";
 
-import { useHeadlessDelegatedActions } from "@privy-io/react-auth";
+import { useSigners } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { FC, useCallback, useEffect, useRef, useState } from "react";
 import { WalletDropdown } from "@/components/wallet-dropdown";
@@ -16,7 +16,7 @@ const FRONTEND_URL = process.env.NEXT_PUBLIC_APP_URL || "https://hashtro.fun";
 
 const ALL_EVENTS: { value: WebhookEvent; label: string; description: string }[] = [
 	{ value: "horoscope_ready", label: "horoscope_ready", description: "Fired when your daily card is generated" },
-	{ value: "trade_verified",  label: "trade_verified",  description: "Fired when a profitable trade verifies your horoscope" },
+	{ value: "trade_verified", label: "trade_verified", description: "Fired when a profitable trade verifies your horoscope" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ const SecretRevealModal: FC<SecretRevealModalProps> = ({ secret, webhookId, url,
 const AgentPage: FC = () => {
 	const { publicKey, walletId } = usePrivyWallet();
 	const router = useRouter();
-	const { delegateWallet, revokeWallets } = useHeadlessDelegatedActions();
+	const { addSigners, removeSigners } = useSigners();
 
 	// ── Delegation state ──────────────────────────────────────────────────────
 	const [isDelegated, setIsDelegated] = useState(false);
@@ -235,7 +235,7 @@ const AgentPage: FC = () => {
 				// @ts-expect-error tradingDelegated is returned by backend but not yet in the User type
 				setIsDelegated(res.user.tradingDelegated ?? false);
 			}
-		}).catch(() => {});
+		}).catch(() => { });
 	}, [publicKey]);
 
 	// ── Enable autonomous trading ─────────────────────────────────────────────
@@ -246,7 +246,7 @@ const AgentPage: FC = () => {
 		}
 		setDelegating(true);
 		try {
-			await delegateWallet({ address: publicKey, chainType: "solana" });
+			await addSigners({ address: publicKey, signers: [{ signerId: "fozkxqh0gshzezpwf0wilmbf", policyIds: [] }] });
 			await api.setTradingDelegated(publicKey, true);
 			setIsDelegated(true);
 			toast("Autonomous trading enabled");
@@ -262,7 +262,7 @@ const AgentPage: FC = () => {
 		if (!publicKey) return;
 		setRevoking(true);
 		try {
-			await revokeWallets();
+			await removeSigners({ address: publicKey });
 			await api.setTradingDelegated(publicKey, false);
 			setIsDelegated(false);
 			toast("Autonomous trading disabled");

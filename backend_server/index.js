@@ -62,7 +62,7 @@ const corsOptions = {
   ],
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 };
 app.use(cors(corsOptions));
@@ -120,13 +120,13 @@ app.get('/health', async (req, res) => {
  */
 app.get('/api/openapi.json', (req, res) => res.json(swaggerSpec));
 app.use(
-    '/api/docs',
-    helmet({ contentSecurityPolicy: false }),
-    swaggerUi.serve,
-    swaggerUi.setup(swaggerSpec, {
-        customSiteTitle: 'Hastrology API Docs',
-        swaggerOptions: { persistAuthorization: true },
-    })
+  '/api/docs',
+  helmet({ contentSecurityPolicy: false }),
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'Hastrology API Docs',
+    swaggerOptions: { persistAuthorization: true },
+  })
 );
 
 /**
