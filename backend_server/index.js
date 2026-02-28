@@ -5,6 +5,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./src/config/swagger');
 const { getConfig, validateEnv } = require('./src/config/environment');
 const { testConnection } = require('./src/config/supabase');
 const logger = require('./src/config/logger');
@@ -111,6 +113,21 @@ app.get('/health', async (req, res) => {
     });
   }
 });
+
+/**
+ * OpenAPI spec + Swagger UI
+ * Helmet's CSP is relaxed for the docs route so the browser can run the UI scripts.
+ */
+app.get('/api/openapi.json', (req, res) => res.json(swaggerSpec));
+app.use(
+    '/api/docs',
+    helmet({ contentSecurityPolicy: false }),
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, {
+        customSiteTitle: 'Hastrology API Docs',
+        swaggerOptions: { persistAuthorization: true },
+    })
+);
 
 /**
  * Mount API routes

@@ -268,3 +268,73 @@ $$;
 
 -- Grant execute to service role (the backend uses the service key)
 GRANT EXECUTE ON FUNCTION increment_trade_attempts(TEXT, DATE) TO service_role;
+
+-- Migration: last_trade_attempt_at on horoscopes.
+-- Records when the most recent trade attempt was made for a given day's horoscope,
+-- so agents can display "last attempted at 3:14 PM" without querying trades history.
+ALTER TABLE horoscopes ADD COLUMN IF NOT EXISTS last_trade_attempt_at TIMESTAMP WITH TIME ZONE;
+
+-- Migration: Agent Webhooks table.
+-- Agents register a URL here; the backend pushes events (horoscope_ready,
+-- trade_verified, trade_failed) to that URL signed with a per-webhook secret.
+CREATE TABLE IF NOT EXISTS agent_webhooks (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  api_key_id      UUID NOT NULL REFERENCES agent_api_keys(id) ON DELETE CASCADE,
+  wallet_address  TEXT NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+  url             TEXT NOT NULL,
+  secret          TEXT NOT NULL,          -- HMAC-SHA256 signing secret (stored raw — needed for signing)
+  events          TEXT[] NOT NULL,        -- e.g. ARRAY['horoscope_ready','trade_verified']
+  active          BOOLEAN NOT NULL DEFAULT true,
+  created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhooks_wallet  ON agent_webhooks(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_webhooks_key     ON agent_webhooks(api_key_id);
+
+ALTER TABLE agent_webhooks ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'agent_webhooks'
+      AND policyname = 'Service role has full access to agent_webhooks'
+  ) THEN
+    CREATE POLICY "Service role has full access to agent_webhooks"
+      ON agent_webhooks FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+-- Migration: Agent API Keys table.
+-- Agents (e.g. OpenClaw) authenticate with a bearer token so they can read
+-- horoscope signals on behalf of a user without needing the user's private key.
+-- The raw key is NEVER stored — only its SHA-256 hex digest.
+CREATE TABLE IF NOT EXISTS agent_api_keys (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  key_hash        TEXT UNIQUE NOT NULL,          -- SHA-256 of the raw key (never store raw)
+  key_prefix      TEXT NOT NULL,                  -- First 13 chars for display e.g. "hstro_sk_V2f8"
+  wallet_address  TEXT NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+  label           TEXT NOT NULL DEFAULT 'My Agent',
+  created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_used_at    TIMESTAMP WITH TIME ZONE,
+  revoked         BOOLEAN NOT NULL DEFAULT false
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_keys_wallet ON agent_api_keys(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_agent_keys_hash   ON agent_api_keys(key_hash);
+
+ALTER TABLE agent_api_keys ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'agent_api_keys'
+      AND policyname = 'Service role has full access to agent_api_keys'
+  ) THEN
+    CREATE POLICY "Service role has full access to agent_api_keys"
+      ON agent_api_keys FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+  END IF;
+END $$;

@@ -1,0 +1,275 @@
+{
+    "colors_to_tickers": {
+        "Fire Red": {
+            "ticker": "SOL",
+            "name": "Solana",
+            "max_leverage": 100,
+            "emoji": "🔴",
+            "category": "crypto"
+        },
+        "Burnt Orange": {
+            "ticker": "JUP",
+            "name": "Jupiter",
+            "max_leverage": 50,
+            "emoji": "🟠",
+            "category": "crypto"
+        },
+        "Golden Yellow": {
+            "ticker": "BNB",
+            "name": "BNB",
+            "max_leverage": 50,
+            "emoji": "🟡",
+            "category": "crypto"
+        },
+        "Forest Green": {
+            "ticker": "BTC",
+            "name": "Bitcoin",
+            "max_leverage": 100,
+            "emoji": "🟢",
+            "category": "crypto"
+        },
+        "Emerald Green": {
+            "ticker": "ETH",
+            "name": "Ethereum",
+            "max_leverage": 100,
+            "emoji": "💎",
+            "category": "crypto"
+        },
+        "Bronze": {
+            "ticker": "ORE",
+            "name": "Ore",
+            "max_leverage": 5,
+            "emoji": "🟤",
+            "category": "crypto"
+        },
+        "Sky Blue": {
+            "ticker": "PYTH",
+            "name": "Pyth Network",
+            "max_leverage": 50,
+            "emoji": "🩵",
+            "category": "crypto"
+        },
+        "Silver": {
+            "ticker": "XAG",
+            "name": "Silver",
+            "max_leverage": 100,
+            "emoji": "🩶",
+            "category": "commodity"
+        },
+        "Lavender": {
+            "ticker": "RAY",
+            "name": "Raydium",
+            "max_leverage": 50,
+            "emoji": "💜",
+            "category": "crypto"
+        },
+        "Deep Blue": {
+            "ticker": "JTO",
+            "name": "Jito",
+            "max_leverage": 50,
+            "emoji": "🔵",
+            "category": "crypto"
+        },
+        "Teal": {
+            "ticker": "KMNO",
+            "name": "Kamino",
+            "max_leverage": 50,
+            "emoji": "🌊",
+            "category": "crypto"
+        },
+        "Purple": {
+            "ticker": "WIF",
+            "name": "Dogwifhat",
+            "max_leverage": 25,
+            "emoji": "🟣",
+            "category": "meme"
+        },
+        "Hot Pink": {
+            "ticker": "PUMP",
+            "name": "Pump.fun",
+            "max_leverage": 25,
+            "emoji": "💗",
+            "category": "meme"
+        },
+        "Neon Green": {
+            "ticker": "BONK",
+            "name": "Bonk",
+            "max_leverage": 25,
+            "emoji": "🦴",
+            "category": "meme"
+        },
+        "Baby Blue": {
+            "ticker": "PENGU",
+            "name": "Pudgy Penguins",
+            "max_leverage": 25,
+            "emoji": "🐧",
+            "category": "meme"
+        },
+        "Toxic Green": {
+            "ticker": "FARTCOIN",
+            "name": "Fartcoin",
+            "max_leverage": 25,
+            "emoji": "💨",
+            "category": "meme"
+        },
+        "Meteor Red": {
+            "ticker": "MET",
+            "name": "Meteora",
+            "max_leverage": 10,
+            "emoji": "☄️",
+            "category": "crypto"
+        },
+        "Gold": {
+            "ticker": "XAU",
+            "name": "Gold",
+            "max_leverage": 100,
+            "emoji": "✨",
+            "category": "commodity"
+        },
+        "Oil Black": {
+            "ticker": "CRUDEOIL",
+            "name": "Crude Oil",
+            "max_leverage": 50,
+            "emoji": "🛢️",
+            "category": "commodity"
+        },
+        "Electric Blue": {
+            "ticker": "TSLAr",
+            "name": "Tesla",
+            "max_leverage": 10,
+            "emoji": "⚡",
+            "category": "stocks"
+        },
+        "Navy Blue": {
+            "ticker": "SPYr",
+            "name": "S&P 500",
+            "max_leverage": 10,
+            "emoji": "🏛️",
+            "category": "stocks"
+        },
+        "Cyber Green": {
+            "ticker": "NVDAr",
+            "name": "NVIDIA",
+            "max_leverage": 10,
+            "emoji": "💻",
+            "category": "stocks"
+        },
+        "Orange Glow": {
+            "ticker": "MSTRr",
+            "name": "MicroStrategy",
+            "max_leverage": 10,
+            "emoji": "🟧",
+            "category": "stocks"
+        },
+        "Royal Blue": {
+            "ticker": "CRCLr",
+            "name": "Circle",
+            "max_leverage": 10,
+            "emoji": "👑",
+            "category": "stocks"
+        },
+        "Midnight Black": {
+            "ticker": "ZEC",
+            "name": "Zcash",
+            "max_leverage": 10,
+            "emoji": "🖤",
+            "category": "crypto"
+        },
+        "Pearl White": {
+            "ticker": "EUR",
+            "name": "Euro",
+            "max_leverage": 500,
+            "emoji": "🤍",
+            "category": "forex"
+        },
+        "Sunrise Red": {
+            "ticker": "USDJPY",
+            "name": "USD/JPY",
+            "max_leverage": 500,
+            "emoji": "🌅",
+            "category": "forex"
+        },
+        "Jade Green": {
+            "ticker": "USDCNH",
+            "name": "USD/CNH",
+            "max_leverage": 500,
+            "emoji": "🀄",
+            "category": "forex"
+        },
+        "British Blue": {
+            "ticker": "GBP",
+            "name": "British Pound",
+            "max_leverage": 500,
+            "emoji": "🇬🇧",
+            "category": "forex"
+        }
+    },
+    "bullish_moods": [
+        {
+            "mood": "Confident",
+            "emoji": "✨"
+        },
+        {
+            "mood": "Optimistic",
+            "emoji": "🌅"
+        },
+        {
+            "mood": "Energized",
+            "emoji": "⚡"
+        },
+        {
+            "mood": "Adventurous",
+            "emoji": "🚀"
+        },
+        {
+            "mood": "Passionate",
+            "emoji": "🔥"
+        },
+        {
+            "mood": "Abundant",
+            "emoji": "💫"
+        },
+        {
+            "mood": "Bold",
+            "emoji": "🦁"
+        },
+        {
+            "mood": "Inspired",
+            "emoji": "💡"
+        }
+    ],
+    "bearish_moods": [
+        {
+            "mood": "Cautious",
+            "emoji": "🛡️"
+        },
+        {
+            "mood": "Reflective",
+            "emoji": "🌙"
+        },
+        {
+            "mood": "Restless",
+            "emoji": "🌀"
+        },
+        {
+            "mood": "Skeptical",
+            "emoji": "🤔"
+        },
+        {
+            "mood": "Guarded",
+            "emoji": "🔒"
+        },
+        {
+            "mood": "Withdrawn",
+            "emoji": "🌑"
+        },
+        {
+            "mood": "Anxious",
+            "emoji": "😰"
+        },
+        {
+            "mood": "Uncertain",
+            "emoji": "🌫️"
+        }
+    ]
+}
