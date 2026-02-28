@@ -66,6 +66,68 @@ router.get(
     agentController.getSignal
 );
 
+// ─── Autonomous trade execution ───────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /agent/execute-trade:
+ *   post:
+ *     summary: Execute a trade autonomously via Privy delegated actions
+ *     description: |
+ *       Builds a Flash Protocol perpetuals transaction server-side, signs it using
+ *       the user's Privy embedded wallet (delegated actions), and broadcasts it on
+ *       Solana — all without the user needing to be online.
+ *
+ *       **Prerequisites:**
+ *       1. User must have a Privy embedded wallet linked (`privy_wallet_id` set)
+ *       2. User must have enabled autonomous trading via the `/agent` page
+ *          (`trading_delegated = true`)
+ *       3. A horoscope must exist for today (call `GET /agent/signal` first)
+ *
+ *       The signal's `direction`, `ticker`, and `leverage_suggestion` are used
+ *       automatically — you only supply the USDC collateral `amount`.
+ *     tags: [Agent]
+ *     security:
+ *       - AgentApiKey: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amount]
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 description: USDC collateral in UI units (e.g. 50 = $50)
+ *                 example: 50
+ *                 minimum: 1
+ *                 maximum: 1000
+ *     responses:
+ *       200:
+ *         description: Trade executed on-chain
+ *       400:
+ *         description: Invalid amount
+ *       403:
+ *         description: Autonomous trading not enabled
+ *       404:
+ *         description: No horoscope for today — call /signal first
+ *       409:
+ *         description: Already verified today
+ *       422:
+ *         description: Privy wallet not linked — user must re-register
+ *       429:
+ *         description: Max retries reached
+ *       502:
+ *         description: Transaction build or Privy signing failed
+ */
+router.post(
+    '/execute-trade',
+    agentSignalLimiter,
+    agentAuth,
+    agentController.executeTrade
+);
+
 // ─── Trade attempt ────────────────────────────────────────────────────────────
 
 /**

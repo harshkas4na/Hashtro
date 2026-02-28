@@ -3,7 +3,8 @@
 Hastrology AI Agent
 -------------------
 A real agent that reads the astrological trading signal via the Hastrology API,
-uses Claude to reason about it, and walks you through the full trade flow.
+uses Gemini to reason about it, and can execute trades fully autonomously via
+Privy delegated actions (no browser needed).
 
 Setup:
     cp .env.example .env      # fill in your keys
@@ -11,8 +12,10 @@ Setup:
     python main.py
 
 Flags:
-    --loop     Re-run every 60 seconds (simulates a long-running agent)
-    --silent   Skip the Claude commentary, just show raw signal
+    --loop     Re-run every 60s (long-running autonomous agent)
+    --silent   Skip Gemini commentary, just show raw signal
+    --auto     Execute the trade automatically without prompting (autonomous mode)
+    --amount N USDC collateral per trade (default: 10)
 """
 
 import os
@@ -99,6 +102,43 @@ def verify_trade(wallet_address: str, tx_sig: str, pnl_percent: float) -> dict:
         json={"walletAddress": wallet_address, "txSig": tx_sig, "pnlPercent": pnl_percent},
         timeout=10,
     )
+    r.raise_for_status()
+    return r.json()
+
+
+def execute_trade_autonomous(amount: float) -> dict:
+    """
+    Execute a trade fully server-side via Privy delegated actions.
+    The backend builds the Flash transaction, signs with the user's Privy
+    embedded wallet, and broadcasts — no browser needed.
+
+    Requires:
+      - User has enabled autonomous trading (/agent page → Enable button)
+      - User's privy_wallet_id is stored in the database (auto-set on registration)
+    """
+    r = httpx.post(
+        f"{API_BASE}/agent/execute-trade",
+        headers=HEADERS,
+        json={"amount": amount},
+        timeout=60,  # transaction building + Pyth price fetch can be slow
+    )
+    if r.status_code == 403:
+        print(f"{RED}✗ Autonomous trading not enabled.{RESET}")
+        print(f"  {DIM}Visit the /agent page and click 'Enable Autonomous Trading' first.{RESET}")
+        sys.exit(1)
+    if r.status_code == 422:
+        print(f"{YELLOW}✗ Privy wallet not linked. Re-register via the frontend.{RESET}")
+        sys.exit(1)
+    if r.status_code == 409:
+        print(f"{GREEN}✓ Today's horoscope already verified — nothing to do.{RESET}")
+        return {}
+    if r.status_code == 429:
+        print(f"{RED}✗ Max trade retries reached for today.{RESET}")
+        return {}
+    if r.status_code == 502:
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        print(f"{RED}✗ Trade execution failed: {body.get('message', 'unknown error')}{RESET}")
+        return {}
     r.raise_for_status()
     return r.json()
 
@@ -203,9 +243,41 @@ def print_status(signal: dict):
     elif not can_retry:
         print(f"\n{RED}✗ Max retries reached for today ({signal.get('max_retries')}).{RESET}\n")
 
+# ── Autonomous flow ───────────────────────────────────────────────────────────
+
+def run_autonomous(signal: dict, amount: float):
+    """Fully autonomous execution — no prompts, no browser."""
+    direction = signal["direction"]
+    ticker    = signal.get("ticker") or "?"
+    lev       = signal.get("leverage_suggestion")
+    lev_label = f"{lev}x" if lev is not None else "N/A"
+
+    print(f"\n  {BOLD}Autonomous mode{RESET} — executing trade server-side via Privy")
+    print(f"  {BOLD}{direction} {ticker} @ {lev_label}  collateral: ${amount} USDC{RESET}\n")
+
+    print(f"{DIM}Building and signing transaction...{RESET}")
+    result = execute_trade_autonomous(amount)
+
+    if not result:
+        return  # error already printed inside execute_trade_autonomous
+
+    tx_sig         = result.get("txSig", "")
+    est_price      = result.get("estimated_price")
+    explorer_url   = result.get("explorer_url", "")
+    attempts_now   = result.get("trade_attempts_today", "?")
+    max_ret        = result.get("max_retries", 2)
+
+    price_str = f"@ ${est_price:,.4f}" if est_price else ""
+    print(f"{GREEN}✓ Trade executed on-chain!{RESET}  {direction} {ticker} {price_str}")
+    print(f"  txSig:    {CYAN}{tx_sig}{RESET}")
+    print(f"  Explorer: {ORANGE}{explorer_url}{RESET}")
+    print(f"  Attempt:  {attempts_now}/{max_ret}\n")
+    print(f"{DIM}Call POST /api/horoscope/verify once you know the P&L result.{RESET}\n")
+
+
 # ── Interactive flow ──────────────────────────────────────────────────────────
 
-def run(silent: bool = False):
+def run(silent: bool = False, auto: bool = False, amount: float = 10.0):
     print(f"\n{DIM}Fetching signal...{RESET}")
     signal = get_signal()
 
@@ -228,7 +300,12 @@ def run(silent: bool = False):
     if not signal.get("should_trade"):
         return
 
-    # ── Step 1: confirm trade ────────────────────────────────────────────────
+    # ── Autonomous mode: execute without any prompts ──────────────────────────
+    if auto:
+        run_autonomous(signal, amount)
+        return
+
+    # ── Interactive mode (original flow) ─────────────────────────────────────
     direction = signal["direction"]
     ticker    = signal.get("ticker") or "?"
     lev       = signal.get("leverage_suggestion")
@@ -277,7 +354,7 @@ def run(silent: bool = False):
     print(f"\n{DIM}Verifying...{RESET}")
     vr = verify_trade(wallet, tx_sig, pnl)
     if vr.get("verified"):
-        print(f"{GREEN}🌟 Horoscope verified! Profitable trade confirmed.{RESET}\n")
+        print(f"{GREEN}Horoscope verified! Profitable trade confirmed.{RESET}\n")
     else:
         print(f"{YELLOW}⚠  Verification returned unexpected response: {vr}{RESET}\n")
 
@@ -287,7 +364,9 @@ def run(silent: bool = False):
 def main():
     parser = argparse.ArgumentParser(description="Hastrology AI Agent")
     parser.add_argument("--loop",   action="store_true", help="Poll every 60s")
-    parser.add_argument("--silent", action="store_true", help="Skip Claude commentary")
+    parser.add_argument("--silent", action="store_true", help="Skip Gemini commentary")
+    parser.add_argument("--auto",   action="store_true", help="Execute trades automatically without prompts (requires autonomous trading enabled in /agent page)")
+    parser.add_argument("--amount", type=float, default=10.0, help="USDC collateral per trade in autonomous mode (default: 10)")
     args = parser.parse_args()
 
     if not API_KEY or not API_KEY.startswith("hstro_sk_"):
@@ -300,13 +379,13 @@ def main():
         print(f"{DIM}Running in loop mode. Press Ctrl+C to stop.{RESET}\n")
         try:
             while True:
-                run(silent=args.silent)
+                run(silent=args.silent, auto=args.auto, amount=args.amount)
                 print(f"{DIM}Sleeping 60s...{RESET}\n")
                 time.sleep(60)
         except KeyboardInterrupt:
             print(f"\n{DIM}Stopped.{RESET}\n")
     else:
-        run(silent=args.silent)
+        run(silent=args.silent, auto=args.auto, amount=args.amount)
 
 
 if __name__ == "__main__":

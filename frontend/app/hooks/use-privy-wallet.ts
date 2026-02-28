@@ -153,6 +153,26 @@ export function usePrivyWallet(isTestnet = false) {
 		[wallet, signAndSendTransaction, chain],
 	);
 
+	// Privy internal IDs — needed to link the wallet for server-side delegated actions.
+	// userId   = Privy user DID  (did:privy:...)  → stored in users.privy_user_id
+	// walletId = Privy wallet UUID                → stored in users.privy_wallet_id
+	//
+	// walletId comes from the linked accounts array because ConnectedStandardSolanaWallet
+	// doesn't expose .id in its public TS types (the field exists at runtime).
+	const userId = user?.id ?? undefined;
+	const walletId = useMemo(() => {
+		if (!user || !wallet) return undefined;
+		const linked = user.linkedAccounts?.find(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(a: any) =>
+				a.type === "wallet" &&
+				a.walletClientType === "privy" &&
+				a.address === wallet.address,
+		);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		return (linked as any)?.id as string | undefined;
+	}, [user, wallet]);
+
 	return {
 		publicKey,
 		address: publicKey,
@@ -165,5 +185,7 @@ export function usePrivyWallet(isTestnet = false) {
 		sendTransaction,
 		disconnect: privyLogout,
 		wallet,
+		userId,
+		walletId,
 	};
 }
