@@ -1,5 +1,8 @@
 import {
+	ApiKey,
 	AstroCard,
+	Webhook,
+	WebhookEvent,
 	BirthDetails,
 	CardType,
 	HistoryResponse,
@@ -211,6 +214,104 @@ export const api = {
 			await throwApiError(res, "Failed to update trade time");
 		}
 
+		return res.json();
+	},
+
+	// ─── Agent API Key Management ────────────────────────────────────────────────
+
+	/**
+	 * Generate a new agent API key for a wallet.
+	 * The raw key is returned ONCE — caller must save it immediately.
+	 */
+	async generateAgentKey(
+		walletAddress: string,
+		label: string,
+	): Promise<{ key: string; keyPrefix: string; id: string; message: string }> {
+		const res = await fetch(`${API_BASE}/agent/keys`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ walletAddress, label }),
+		});
+
+		if (!res.ok) {
+			await throwApiError(res, "Failed to generate API key");
+		}
+
+		return res.json();
+	},
+
+	/**
+	 * List all agent API keys for a wallet (masked — no raw key returned).
+	 */
+	async listAgentKeys(walletAddress: string): Promise<{ keys: ApiKey[] }> {
+		const res = await fetch(`${API_BASE}/agent/keys/${walletAddress}`);
+
+		if (!res.ok) {
+			await throwApiError(res, "Failed to list API keys");
+		}
+
+		return res.json();
+	},
+
+	/**
+	 * Revoke an agent API key by its UUID.
+	 */
+	async revokeAgentKey(
+		keyId: string,
+		walletAddress: string,
+	): Promise<{ message: string }> {
+		const res = await fetch(`${API_BASE}/agent/keys/${keyId}`, {
+			method: "DELETE",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ walletAddress }),
+		});
+
+		if (!res.ok) {
+			await throwApiError(res, "Failed to revoke API key");
+		}
+
+		return res.json();
+	},
+
+	// ─── Webhook Management ───────────────────────────────────────────────────────
+
+	async listWebhooks(apiKey: string): Promise<{ webhooks: Webhook[] }> {
+		const res = await fetch(`${API_BASE}/agent/webhooks`, {
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+		if (!res.ok) await throwApiError(res, "Failed to list webhooks");
+		return res.json();
+	},
+
+	async registerWebhook(
+		apiKey: string,
+		url: string,
+		events: WebhookEvent[],
+	): Promise<{ webhook_id: string; secret: string; message: string }> {
+		const res = await fetch(`${API_BASE}/agent/webhook`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+			body: JSON.stringify({ url, events }),
+		});
+		if (!res.ok) await throwApiError(res, "Failed to register webhook");
+		return res.json();
+	},
+
+	async deleteWebhook(apiKey: string, webhookId: string): Promise<{ message: string }> {
+		const res = await fetch(`${API_BASE}/agent/webhook/${webhookId}`, {
+			method: "DELETE",
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+		if (!res.ok) await throwApiError(res, "Failed to delete webhook");
+		return res.json();
+	},
+
+	async testWebhook(apiKey: string, webhookId: string): Promise<{ delivered: boolean; http_status: number }> {
+		const res = await fetch(`${API_BASE}/agent/webhook/${webhookId}/test`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+		if (!res.ok) await throwApiError(res, "Test delivery failed");
 		return res.json();
 	},
 };

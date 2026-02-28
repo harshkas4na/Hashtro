@@ -163,6 +163,56 @@ class WebhookService {
         }
     }
 
+    /**
+     * Send a test ping to a specific webhook so the owner can verify it's working.
+     * Looks up the webhook, confirms ownership, then delivers a synthetic 'test' event.
+     *
+     * @param {string} webhookId
+     * @param {string} walletAddress
+     * @returns {Promise<{ ok: boolean, status?: number, error?: string }>}
+     */
+    async sendTest(webhookId, walletAddress) {
+        const { data: webhook, error } = await this.supabase
+            .from('agent_webhooks')
+            .select('id, url, secret, active')
+            .eq('id', webhookId)
+            .eq('wallet_address', walletAddress)
+            .single();
+
+        if (error || !webhook) {
+            return { ok: false, error: 'Webhook not found or does not belong to this wallet' };
+        }
+        if (!webhook.active) {
+            return { ok: false, error: 'Webhook is inactive' };
+        }
+
+        const payload = {
+            event:          'test',
+            timestamp:      new Date().toISOString(),
+            wallet_address: walletAddress,
+            data:           { message: 'This is a test ping from Hastrology.' },
+        };
+        const payloadStr = JSON.stringify(payload);
+        const signature  = this._sign(payloadStr, webhook.secret);
+
+        try {
+            const response = await axios.post(webhook.url, payloadStr, {
+                headers: {
+                    'Content-Type':           'application/json',
+                    'X-Hastrology-Signature': signature,
+                    'X-Hastrology-Event':     'test',
+                },
+                timeout: DELIVERY_TIMEOUT,
+            });
+            logger.info('Webhook test delivered', { webhookId, status: response.status });
+            return { ok: true, status: response.status };
+        } catch (err) {
+            const status = err.response?.status;
+            logger.warn('Webhook test delivery failed', { webhookId, status, err: err.message });
+            return { ok: false, status, error: err.message };
+        }
+    }
+
     async _deliverOne(webhook, event, payloadStr) {
         const signature = this._sign(payloadStr, webhook.secret);
 

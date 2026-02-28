@@ -4,10 +4,37 @@ const horoscopeService = require('../services/horoscope.service');
 const aiService = require('../services/ai.service');
 const twitterService = require('../services/twitter.service');
 const webhookService = require('../services/webhook.service');
+const { getConfig } = require('../config/environment');
 const { successResponse, errorResponse } = require('../utils/response');
 const logger = require('../config/logger');
 
 const AGENT_MAX_RETRIES = 2;
+
+// ─── Asset mapping (lucky_color → ticker) ─────────────────────────────────────
+// Mirrors the same mapping used by the AI server and the frontend.
+// Applied here as a fallback so ticker/max_leverage are always populated even
+// when the AI server returns a cached card that was generated before enrichment.
+const COLORS_TO_TICKERS = (() => {
+    try {
+        return require('../knowledge/asset_mappings.json').colors_to_tickers || {};
+    } catch {
+        return {};
+    }
+})();
+
+/**
+ * Look up asset info from a lucky_color string.
+ * Tries exact match first, then case-insensitive, then returns null.
+ */
+function lookupAssetByColor(color) {
+    if (!color) return null;
+    if (COLORS_TO_TICKERS[color]) return COLORS_TO_TICKERS[color];
+    const lower = color.toLowerCase();
+    for (const [k, v] of Object.entries(COLORS_TO_TICKERS)) {
+        if (k.toLowerCase() === lower) return v;
+    }
+    return null;
+}
 
 /**
  * Map a horoscope card to a machine-readable trading signal.
@@ -21,21 +48,37 @@ function buildSignal(card, alreadyVerified, tradeAttemptsToday) {
     const back  = card.back  || {};
     const assets = back.lucky_assets || {};
 
-    const luckScore   = front.luck_score  ?? null;
-    const maxLeverage = assets.max_leverage ?? null;
+    const luckScore   = front.luck_score ?? null;
     const hasWarning  = back.remedy != null;
+    const luckyNumber = assets.number ? parseInt(assets.number, 10) : null;
+
+    // Resolve ticker + max_leverage from lucky_color if the AI server didn't enrich them.
+    // This handles stale cached cards returned by the AI server.
+    const colorInfo   = (!assets.ticker || !assets.max_leverage)
+        ? lookupAssetByColor(assets.color)
+        : null;
+
+    const ticker     = assets.ticker      ?? colorInfo?.ticker      ?? null;
+    const assetName  = assets.name        ?? colorInfo?.name        ?? null;
+    const assetEmoji = assets.emoji       ?? colorInfo?.emoji       ?? null;
+    const maxLeverage = assets.max_leverage ?? colorInfo?.max_leverage ?? null;
 
     const direction = luckScore !== null ? (luckScore > 50 ? 'LONG' : 'SHORT') : null;
-    const leverageSuggestion = maxLeverage === null ? null
-        : hasWarning ? Math.min(3, maxLeverage)
-        : Math.min(5, maxLeverage);
+
+    // lucky_number is the suggested leverage for today (same as frontend).
+    // Cap it at 3 when there is a warning, and never exceed the asset's max_leverage ceiling.
+    const baseLev = luckyNumber ?? maxLeverage;
+    const leverageSuggestion = baseLev === null ? null
+        : hasWarning ? Math.min(3, baseLev)
+        : maxLeverage !== null ? Math.min(baseLev, maxLeverage)
+        : baseLev;
 
     const canRetry = tradeAttemptsToday < AGENT_MAX_RETRIES && !alreadyVerified;
 
     return {
         direction,
-        asset:               assets.name    ?? null,
-        ticker:              assets.ticker  ?? null,
+        asset:               assetName,
+        ticker,
         leverage_suggestion: leverageSuggestion,
         leverage_max:        maxLeverage,
         power_hour:          assets.power_hour ?? null,
@@ -162,11 +205,13 @@ class AgentController {
 
             logger.info('Agent signal served', { walletAddress, direction: signal.direction, luckScore: signal.luck_score });
 
+            const { frontend } = getConfig();
             return successResponse(res, {
                 wallet_address:          walletAddress,
                 date:                    horoscope.date,
                 horoscope_ready:         true,
                 last_trade_attempt_at:   horoscope.last_trade_attempt_at ?? null,
+                trade_url:               `${frontend.url}/cards`,
                 ...signal,
             });
         } catch (error) {
@@ -247,6 +292,32 @@ class AgentController {
             }, 201);
         } catch (error) {
             logger.error('registerWebhook controller error:', error);
+            next(error);
+        }
+    }
+
+    /**
+     * Send a test ping to a webhook so the owner can verify it's reachable.
+     * @route POST /api/agent/webhook/:webhookId/test
+     */
+    async testWebhook(req, res, next) {
+        try {
+            const walletAddress = req.agentWallet;
+            const { webhookId } = req.params;
+
+            const result = await webhookService.sendTest(webhookId, walletAddress);
+
+            if (!result.ok) {
+                return errorResponse(res, result.error || 'Test delivery failed', result.status === undefined ? 404 : 502);
+            }
+
+            return successResponse(res, {
+                delivered: true,
+                http_status: result.status,
+                message: 'Test ping delivered successfully.',
+            });
+        } catch (error) {
+            logger.error('testWebhook controller error:', error);
             next(error);
         }
     }

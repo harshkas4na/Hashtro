@@ -2,7 +2,6 @@
 
 import { motion } from "framer-motion";
 import { FC, useState } from "react";
-import { useStore } from "@/store/useStore";
 import type { AstroCard } from "@/types";
 import { StarBackground } from "./StarBackground";
 
@@ -121,8 +120,6 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 }) => {
 	const [isFlipped, setIsFlipped] = useState(false);
 	const [showEducation, setShowEducation] = useState(false);
-	const { user } = useStore();
-	const verifiedToday = isVerifiedToday(user?.tradeMadeAt);
 
 	const today = new Date().toLocaleDateString("en-US", {
 		year: "numeric",
@@ -198,7 +195,7 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 						>
 							{/* Verification badge */}
 							<div className="flex justify-center mb-6">
-								{verified || verifiedToday ? (
+								{verified ? (
 									<div className="badge-verified">
 										<span className="w-2 h-2 rounded-full bg-[#22c55e]" />
 										Verified for today
@@ -340,7 +337,7 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 							</div>
 
 							{/* Trade Education */}
-							{!(verified || verifiedToday) && (
+							{!(verified) && (
 								<div className="mb-4 text-center">
 									{!showEducation ? (
 										<button
@@ -373,15 +370,15 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 							<button
 								onClick={(e) => {
 									e.stopPropagation();
-									if (!(verified || verifiedToday)) onVerifyTrade();
+									if (!(verified)) onVerifyTrade();
 								}}
-								disabled={verified || verifiedToday}
-								className={`btn-primary w-full text-sm sm:text-base ${verified || verifiedToday
+								disabled={verified}
+								className={`btn-primary w-full text-sm sm:text-base ${verified
 									? "opacity-70 cursor-not-allowed"
 									: ""
 									}`}
 							>
-								{verified || verifiedToday ? (
+								{verified ? (
 									<>
 										<svg
 											viewBox="0 0 24 24"
@@ -415,7 +412,7 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 							</p>
 
 							{/* Share on X button — Twitter Web Intent, no API needed */}
-							<button
+							{/* <button
 								onClick={(e) => {
 									e.stopPropagation();
 									const text = `my cosmic reading for today on @tryhashtro\n\n"${card.front.tagline}"\n\n${card.front.hook_1}\n\n#Hashtro hashtro.fun`;
@@ -435,7 +432,7 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 									<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
 								</svg>
 								Share Reading on X
-							</button>
+							</button> */}
 
 							{/* Flash.trade CTA */}
 							<a
@@ -633,9 +630,3 @@ function isSameLocalDay(a: Date, b: Date) {
 	);
 }
 
-function isVerifiedToday(tradeMadeAt?: string | null) {
-	if (!tradeMadeAt) return false;
-	const madeAt = new Date(tradeMadeAt);
-	if (Number.isNaN(madeAt.getTime())) return false;
-	return isSameLocalDay(madeAt, new Date());
-}

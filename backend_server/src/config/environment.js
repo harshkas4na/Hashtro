@@ -34,6 +34,10 @@ const envSchema = Joi.object({
     // CORS
     ALLOWED_ORIGINS: Joi.string().default('*')
         .description('Comma-separated list of allowed CORS origins'),
+
+    // Frontend
+    FRONTEND_URL: Joi.string().uri().default('https://hashtro.fun')
+        .description('Public frontend URL — used to build trade_url in agent signal'),
 }).unknown(true); // Allow other env vars
 
 /**
@@ -84,6 +88,9 @@ const getConfig = () => {
             allowedOrigins: env.ALLOWED_ORIGINS === '*'
                 ? '*'
                 : env.ALLOWED_ORIGINS.split(',').map(o => o.trim()),
+        },
+        frontend: {
+            url: env.FRONTEND_URL,
         }
     };
 };

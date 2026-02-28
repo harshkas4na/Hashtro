@@ -5,6 +5,7 @@ const solanaService = require('../services/solana.service');
 const twitterService = require('../services/twitter.service');
 const webhookService = require('../services/webhook.service');
 const { successResponse, errorResponse } = require('../utils/response');
+const { getConfig } = require('../config/environment');
 const logger = require('../config/logger');
 
 /**
@@ -189,10 +190,16 @@ class HoroscopeController {
             // attempts still consume quota to prevent brute-force replay).
             await horoscopeService.incrementTradeAttempts(walletAddress);
 
-            // Verify the transaction exists on-chain
-            const txValid = await solanaService.verifyTransaction(txSig);
-            if (!txValid) {
-                return errorResponse(res, 'Transaction not found on-chain', 400);
+            // Verify the transaction exists on-chain.
+            // In development, txSigs prefixed with "TEST_" bypass the on-chain check
+            // so agents can test the full verify flow without a real transaction.
+            const { server } = getConfig();
+            const isTestSig = server.isDevelopment && txSig.startsWith('TEST_');
+            if (!isTestSig) {
+                const txValid = await solanaService.verifyTransaction(txSig);
+                if (!txValid) {
+                    return errorResponse(res, 'Transaction not found on-chain', 400);
+                }
             }
 
             // Mark today's horoscope as verified
