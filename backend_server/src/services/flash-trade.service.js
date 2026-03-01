@@ -433,15 +433,27 @@ async function buildClosePositionTx({ walletAddress, side, symbol = 'ETH', netwo
         flashSide,
     );
 
-    // Build close instructions
-    const closeData = await flashClient.closePosition(
-        targetTokenSymbol,
-        collateralSymbol,
-        priceAfterSlippage,
-        flashSide,
-        POOL_CONFIG,
-        Privilege.None,
-    );
+    // Build close instructions.
+    // If collateral !== SOL (e.g. USDC for SHORT, BTC for BNB LONG), use closeAndSwap
+    // so the user receives SOL back — matching frontend behaviour.
+    const closeData = collateralSymbol !== 'SOL'
+        ? await flashClient.closeAndSwap(
+            targetTokenSymbol,
+            'SOL',
+            collateralSymbol,
+            priceAfterSlippage,
+            flashSide,
+            POOL_CONFIG,
+            Privilege.None,
+        )
+        : await flashClient.closePosition(
+            targetTokenSymbol,
+            collateralSymbol,
+            priceAfterSlippage,
+            flashSide,
+            POOL_CONFIG,
+            Privilege.None,
+        );
 
     const instructions = [
         ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
