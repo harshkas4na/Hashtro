@@ -1,12 +1,10 @@
 {
     "version": 2,
+    "buildCommand": "pnpm run build",
     "builds": [
         {
             "src": "index.js",
-            "use": "@vercel/node",
-            "config": {
-                "includeFiles": ["node_modules/@privy-io/node/**/*"]
-            }
+            "use": "@vercel/node"
         }
     ],
     "routes": [
