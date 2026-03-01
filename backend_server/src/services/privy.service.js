@@ -1,4 +1,3 @@
-const { PrivyClient } = require('@privy-io/node');
 const { getConfig } = require('../config/environment');
 const logger = require('../config/logger');
 
@@ -12,6 +11,10 @@ let _client = null;
 
 function getPrivyClient() {
     if (_client) return _client;
+
+    // Lazy-load to avoid crashing the server on startup if @privy-io/node
+    // has a broken transitive dependency in the current environment.
+    const { PrivyClient } = require('@privy-io/node');
 
     const { privy } = getConfig();
 
