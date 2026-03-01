@@ -1,6 +1,6 @@
 {
     "version": 2,
-    "buildCommand": "pnpm run build",
+    "buildCommand": "npm install",
     "builds": [
         {
             "src": "index.js",

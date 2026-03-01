@@ -13,7 +13,7 @@ const logger = require('../config/logger');
 // Maximum USDC collateral per autonomous trade (safety cap)
 const MAX_TRADE_AMOUNT_USD = 1000;
 
-const AGENT_MAX_RETRIES = 10;
+const AGENT_MAX_RETRIES = 20;
 
 // Flash Protocol perpetuals support exactly these 5 assets.
 // Ticker is derived from luck_score, mirroring frontend getCoinFromLuckScore().
