@@ -11,7 +11,7 @@ import { ApiKey, Webhook, WebhookEvent } from "@/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.hashtro.fun/api";
 const FRONTEND_URL = process.env.NEXT_PUBLIC_APP_URL || "https://hashtro.fun";
 
 const ALL_EVENTS: {
@@ -19,17 +19,17 @@ const ALL_EVENTS: {
 	label: string;
 	description: string;
 }[] = [
-	{
-		value: "horoscope_ready",
-		label: "horoscope_ready",
-		description: "Fired when your daily card is generated",
-	},
-	{
-		value: "trade_verified",
-		label: "trade_verified",
-		description: "Fired when a profitable trade verifies your horoscope",
-	},
-];
+		{
+			value: "horoscope_ready",
+			label: "horoscope_ready",
+			description: "Fired when your daily card is generated",
+		},
+		{
+			value: "trade_verified",
+			label: "trade_verified",
+			description: "Fired when a profitable trade verifies your horoscope",
+		},
+	];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -391,7 +391,7 @@ const AgentPage: FC = () => {
 					setIsDelegated(res.user.tradingDelegated ?? false);
 				}
 			})
-			.catch(() => {});
+			.catch(() => { });
 	}, [publicKey]);
 
 	// ── Enable autonomous trading ─────────────────────────────────────────────
