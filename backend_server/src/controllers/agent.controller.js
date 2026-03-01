@@ -206,25 +206,30 @@ async function autoCloseAndVerify({ walletAddress, side, symbol, entryPrice, lev
         walletAddress, entryPrice, exitPrice: closeExitPrice, pnlPercent, side, leverage,
     });
 
-    // ── Step 5: verify horoscope ──────────────────────────────────────────────
-    try {
-        const horoscopeService = require('../services/horoscope.service');
-        const verified = await horoscopeService.verifyHoroscope(walletAddress, closeTxSig, pnlPercent);
+    // ── Step 5: verify horoscope (only if trade was profitable) ──────────────
+    let verified = false;
 
-        logger.info('Agent auto-close: horoscope verification result', { walletAddress, pnlPercent, verified });
-
-        // ── Step 6: fire webhook ──────────────────────────────────────────────
-        webhookService.deliver(walletAddress, 'trade_verified', {
-            closeTxSig,
-            entryPrice,
-            exitPrice: closeExitPrice,
-            pnlPercent,
-            verified,
-        }).catch(() => {});
-
-    } catch (err) {
-        logger.error('Agent auto-close: horoscope verification failed', { walletAddress, error: err?.message });
+    if (pnlPercent > 0) {
+        try {
+            const horoscopeService = require('../services/horoscope.service');
+            await horoscopeService.verifyHoroscope(walletAddress);
+            verified = true;
+            logger.info('Agent auto-close: horoscope verified', { walletAddress, pnlPercent });
+        } catch (err) {
+            logger.error('Agent auto-close: horoscope verification failed', { walletAddress, error: err?.message });
+        }
+    } else {
+        logger.info('Agent auto-close: trade was not profitable — horoscope not verified', { walletAddress, pnlPercent });
     }
+
+    // ── Step 6: fire webhook ──────────────────────────────────────────────────
+    webhookService.deliver(walletAddress, 'trade_verified', {
+        closeTxSig,
+        entryPrice,
+        exitPrice: closeExitPrice,
+        pnlPercent,
+        verified,
+    }).catch(() => {});
 }
 
 /**
