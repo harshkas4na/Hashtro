@@ -19,7 +19,7 @@
   "license": "ISC",
   "type": "commonjs",
   "engines": {
-    "node": ">=22.12.0"
+    "node": "22.x"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
