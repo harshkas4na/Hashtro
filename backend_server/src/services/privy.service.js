@@ -4,7 +4,7 @@ const logger = require('../config/logger');
 // CAIP-2 chain identifiers for Solana
 const CAIP2 = {
     'mainnet-beta': 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
-    devnet:         'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+    devnet: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
 };
 
 let _client = null;
@@ -23,7 +23,7 @@ function getPrivyClient() {
     }
 
     _client = new PrivyClient({
-        appId:     privy.appId,
+        appId: privy.appId,
         appSecret: privy.appSecret,
     });
 
@@ -42,8 +42,8 @@ function getPrivyClient() {
  * @returns {Promise<string>}     Solana transaction signature (txSig)
  */
 async function signAndSendTransaction(privyWalletId, base64Tx, network = 'mainnet-beta') {
-    const privy  = getPrivyClient();
-    const caip2  = CAIP2[network] ?? CAIP2['mainnet-beta'];
+    const privy = getPrivyClient();
+    const caip2 = CAIP2[network] ?? CAIP2['mainnet-beta'];
     const { privy: privyConfig } = getConfig();
 
     logger.info('Privy: signing and sending transaction', { privyWalletId, network, caip2 });
@@ -73,9 +73,9 @@ async function signAndSendTransaction(privyWalletId, base64Tx, network = 'mainne
         const detail = err?.message ?? err?.error ?? JSON.stringify(err);
         logger.error('Privy: signAndSendTransaction failed', {
             privyWalletId,
-            error:  detail,
+            error: detail,
             status: err?.status ?? err?.statusCode,
-            body:   err?.body   ?? err?.response?.body ?? undefined,
+            body: err?.body ?? err?.response?.body ?? undefined,
         });
         throw err;
     }
@@ -95,10 +95,10 @@ async function isWalletDelegated(privyUserId, walletAddress) {
         const user = await privy.getUser(privyUserId);
         return (user.linkedAccounts ?? []).some(
             (acc) =>
-                acc.type           === 'wallet'   &&
-                acc.chainType      === 'solana'   &&
-                acc.address        === walletAddress &&
-                acc.delegated      === true,
+                acc.type === 'wallet' &&
+                acc.chainType === 'solana' &&
+                acc.address === walletAddress &&
+                acc.delegated === true,
         );
     } catch (err) {
         logger.warn('Privy: isWalletDelegated check failed', { privyUserId, error: err.message });
