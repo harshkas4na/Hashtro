@@ -4,7 +4,7 @@
   "description": "Hastrology backend server with Supabase integration",
   "main": "index.js",
   "scripts": {
-    "build": "pnpm install --frozen-lockfile",
+    "build": "npm install",
     "dev": "nodemon index.js",
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -18,6 +18,9 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@privy-io/node": "^0.10.0",
