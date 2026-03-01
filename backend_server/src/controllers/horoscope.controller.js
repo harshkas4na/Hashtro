@@ -175,9 +175,9 @@ class HoroscopeController {
         try {
             const { walletAddress, txSig, pnlPercent } = req.body;
 
-            // Reject losing trades server-side
-            if (pnlPercent < 0) {
-                return errorResponse(res, 'Only profitable trades can verify a horoscope', 400);
+            // Reject break-even and losing trades server-side
+            if (pnlPercent <= 0) {
+                return errorResponse(res, 'Only profitable trades (pnlPercent > 0) can verify a horoscope', 400);
             }
 
             // Verify user exists

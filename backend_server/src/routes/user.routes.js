@@ -37,9 +37,60 @@ const router = express.Router();
  *                 type: string
  *               twitterProfileUrl:
  *                 type: string
+ *               dob:
+ *                 type: string
+ *                 description: "Date of birth as a human-readable string (e.g. 'April 20, 1995')"
+ *                 example: "April 20, 1995"
+ *               birthTime:
+ *                 type: string
+ *                 description: "Birth time (e.g. '4:30 PM')"
+ *                 example: "4:30 PM"
+ *               birthPlace:
+ *                 type: string
+ *                 example: "New Delhi, India"
+ *               latitude:
+ *                 type: number
+ *                 example: 28.6139
+ *               longitude:
+ *                 type: number
+ *                 example: 77.2090
+ *               timezoneOffset:
+ *                 type: number
+ *                 description: UTC offset in hours (e.g. 5.5 for IST)
+ *                 example: 5.5
+ *               privyUserId:
+ *                 type: string
+ *                 description: Privy user DID — required for autonomous trading via execute-trade
+ *                 example: "did:privy:abc123"
+ *               privyWalletId:
+ *                 type: string
+ *                 description: Privy embedded wallet UUID — required for autonomous trading via execute-trade
+ *                 example: "wallet-uuid-here"
  *     responses:
- *       200:
+ *       201:
  *         description: User registered or updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "User registered successfully"
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     walletAddress:
+ *                       $ref: '#/components/schemas/WalletAddress'
+ *                 token:
+ *                   type: string
+ *                   description: JWT token for authenticated requests
  *       400:
  *         description: Validation error
  */
@@ -253,6 +304,21 @@ router.post(
  *     responses:
  *       200:
  *         description: Delegation status updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 trading_delegated:
+ *                   type: boolean
+ *                   description: The new delegation state
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Autonomous trading enabled"
  *       400:
  *         description: Missing or invalid fields
  *       404:

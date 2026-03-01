@@ -12,8 +12,8 @@ const DELIVERY_TIMEOUT  = 10000; // 10s per attempt
  *
  * Supported events:
  *   horoscope_ready — fired after a horoscope card is generated
+ *   trade_executed  — fired immediately after a trade is opened via execute-trade
  *   trade_verified  — fired after a profitable trade marks the horoscope verified
- *   trade_failed    — reserved for Phase 4 (auto trade execution)
  */
 class WebhookService {
     constructor() {
@@ -28,7 +28,7 @@ class WebhookService {
      * @param {string} walletAddress
      * @param {string} apiKeyId       — UUID of the API key used to register
      * @param {string} url            — HTTPS endpoint that receives the events
-     * @param {string[]} events       — subset of ['horoscope_ready','trade_verified','trade_failed']
+     * @param {string[]} events       — subset of ['horoscope_ready','trade_executed','trade_verified']
      * @returns {Promise<{ id: string, secret: string }>}
      */
     async register(walletAddress, apiKeyId, url, events) {

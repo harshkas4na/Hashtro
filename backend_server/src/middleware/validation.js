@@ -250,7 +250,7 @@ const generateKeySchema = Joi.object({
 /**
  * Webhook registration validation schema
  */
-const WEBHOOK_EVENTS = ['horoscope_ready', 'trade_verified', 'trade_failed'];
+const WEBHOOK_EVENTS = ['horoscope_ready', 'trade_executed', 'trade_verified'];
 
 const webhookRegistrationSchema = Joi.object({
   url: Joi.string()

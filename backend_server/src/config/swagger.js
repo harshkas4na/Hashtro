@@ -22,10 +22,18 @@ Generate a key with \`POST /agent/keys\`. Keys are per-wallet and can be revoked
 
 ## Quick start for agents
 
+**Polling workflow (manual trade):**
 1. Generate a key: \`POST /agent/keys\`
 2. Fetch today's signal: \`GET /agent/signal\`
-3. Record a trade: \`POST /agent/trade-attempt\`
-4. Verify profit: \`POST /horoscope/verify\`
+3. Direct the user to \`trade_url\` to execute manually
+4. Record the attempt: \`POST /agent/trade-attempt\`
+5. Verify profit: \`POST /horoscope/verify\`
+
+**Autonomous workflow (user enabled delegation on /agent page):**
+1. Generate a key: \`POST /agent/keys\`
+2. Fetch today's signal: \`GET /agent/signal\`
+3. If \`should_trade\` is true: \`POST /agent/execute-trade\` with \`{ amount: 0.1 }\` (SOL)
+4. The position opens, auto-closes in 30s, and verifies automatically
       `.trim(),
       contact: {
         name: 'Hastrology',
@@ -123,12 +131,18 @@ Generate a key with \`POST /agent/keys\`. Keys are per-wallet and can be revoked
               description: 'Derived from luck_score: >50 = LONG, ≤50 = SHORT',
               example: 'LONG',
             },
-            asset: { type: 'string', nullable: true, example: 'Solana' },
-            ticker: { type: 'string', nullable: true, example: 'SOL' },
+            asset: { type: 'string', nullable: true, description: 'Astrological lucky asset name (display only)', example: 'Solana' },
+            ticker: {
+              type: 'string',
+              nullable: true,
+              enum: ['SOL', 'BTC', 'ETH', 'BNB', 'ZEC'],
+              description: 'Flash Protocol trade asset derived from luck_score. Mapping: 0–10→BNB, 10–20→BTC, 20–30→ZEC, 30–40→ETH, 40–50→SOL, 50–60→BNB, 60–70→BTC, 70–80→SOL, 80–90→ETH, 90–100→ZEC',
+              example: 'SOL',
+            },
             leverage_suggestion: {
               type: 'integer',
               nullable: true,
-              description: 'Suggested leverage (capped at 3 if has_warning, 5 otherwise)',
+              description: 'Suggested leverage — capped at 3× when has_warning is true, otherwise capped at the asset\'s max_leverage',
               example: 5,
             },
             leverage_max: { type: 'integer', nullable: true, example: 10 },
@@ -149,8 +163,13 @@ Generate a key with \`POST /agent/keys\`. Keys are per-wallet and can be revoked
               example: true,
             },
             already_verified: { type: 'boolean', example: false },
+            autonomous_trading_enabled: {
+              type: 'boolean',
+              description: 'true when the user has enabled Privy delegated actions — the agent may call POST /agent/execute-trade',
+              example: false,
+            },
             trade_attempts_today: { type: 'integer', example: 0 },
-            max_retries: { type: 'integer', example: 2 },
+            max_retries: { type: 'integer', example: 10 },
             can_retry: { type: 'boolean', example: true },
             last_trade_attempt_at: { type: 'string', format: 'date-time', nullable: true },
             trade_url: {
@@ -186,7 +205,7 @@ Generate a key with \`POST /agent/keys\`. Keys are per-wallet and can be revoked
             recorded: { type: 'boolean', example: true },
             trade_attempts_today: { type: 'integer', example: 1 },
             last_trade_attempt_at: { type: 'string', format: 'date-time' },
-            max_retries: { type: 'integer', example: 2 },
+            max_retries: { type: 'integer', example: 10 },
             can_retry: { type: 'boolean', example: true },
             message: { type: 'string' },
           },
@@ -200,9 +219,9 @@ Generate a key with \`POST /agent/keys\`. Keys are per-wallet and can be revoked
             url: { type: 'string', format: 'uri', example: 'https://agent.example.com/hastrology-hook' },
             events: {
               type: 'array',
-              items: { type: 'string', enum: ['horoscope_ready', 'trade_verified', 'trade_failed'] },
+              items: { type: 'string', enum: ['horoscope_ready', 'trade_executed', 'trade_verified'] },
               minItems: 1,
-              example: ['horoscope_ready', 'trade_verified'],
+              example: ['horoscope_ready', 'trade_executed', 'trade_verified'],
             },
           },
         },
@@ -233,10 +252,29 @@ Generate a key with \`POST /agent/keys\`. Keys are per-wallet and can be revoked
           type: 'object',
           description: 'Payload delivered to registered webhook URLs',
           properties: {
-            event: { type: 'string', enum: ['horoscope_ready', 'trade_verified', 'trade_failed'] },
+            event: { type: 'string', enum: ['horoscope_ready', 'trade_executed', 'trade_verified'] },
             timestamp: { type: 'string', format: 'date-time' },
             wallet_address: { $ref: '#/components/schemas/WalletAddress' },
             data: { type: 'object', description: 'Event-specific payload' },
+          },
+        },
+
+        // ── Agent — execute-trade ────────────────────────────────
+        ExecuteTradeResponse: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: true },
+            executed: { type: 'boolean', example: true },
+            txSig: { type: 'string', description: 'On-chain transaction signature for the open', example: 'abc123...' },
+            direction: { type: 'string', enum: ['LONG', 'SHORT'] },
+            ticker: { type: 'string', enum: ['SOL', 'BTC', 'ETH', 'BNB', 'ZEC'], example: 'SOL' },
+            leverage: { type: 'number', example: 5 },
+            collateral_sol: { type: 'number', description: 'SOL collateral used', example: 0.1 },
+            estimated_price: { type: 'number', description: 'Entry price in USD at time of execution', example: 145.23 },
+            trade_attempts_today: { type: 'integer', example: 1 },
+            can_retry: { type: 'boolean', example: true },
+            explorer_url: { type: 'string', format: 'uri', example: 'https://solscan.io/tx/abc123...' },
+            auto_close_in: { type: 'string', description: 'Position auto-closes after this delay', example: '30s' },
           },
         },
 

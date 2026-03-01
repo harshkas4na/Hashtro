@@ -107,6 +107,7 @@ class UserController {
           createdAt: user.created_at,
           username: user.username,
           tradeMadeAt: user.trade_made_at,
+          tradingDelegated: user.trading_delegated ?? false,
           // OAuth tokens intentionally excluded — they grant write access to
           // the user's Twitter account and must not be sent to clients.
         },

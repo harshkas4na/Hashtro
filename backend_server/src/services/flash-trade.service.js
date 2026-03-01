@@ -130,7 +130,7 @@ async function getTokenPrice(symbol, network) {
  * @param {Object} params
  * @param {string} params.walletAddress    User's Solana address (fee payer)
  * @param {'long'|'short'} params.side     Trade direction
- * @param {number} params.inputAmountUsd   USDC collateral amount (UI units, e.g. 50)
+ * @param {number} params.inputAmountSol   SOL collateral amount (UI units, e.g. 0.1 = 0.1 SOL)
  * @param {number} params.leverage         Leverage multiplier (e.g. 3)
  * @param {string} [params.symbol]         Target token symbol, e.g. 'SOL' (default: 'SOL')
  * @param {string} [params.network]        'mainnet-beta' | 'devnet'
@@ -139,7 +139,7 @@ async function getTokenPrice(symbol, network) {
 async function buildOpenPositionTx({
     walletAddress,
     side,
-    inputAmountUsd,
+    inputAmountSol,
     leverage,
     symbol = 'SOL',
     network,
@@ -148,7 +148,7 @@ async function buildOpenPositionTx({
     const net = network ?? solana.network ?? 'mainnet-beta';
 
     try {
-        return await _buildOpenPositionTx({ walletAddress, side, inputAmountUsd, leverage, symbol, network: net });
+        return await _buildOpenPositionTx({ walletAddress, side, inputAmountSol, leverage, symbol, network: net });
     } catch (err) {
         logger.error('flash-trade.service: buildOpenPositionTx failed', {
             error: err?.message ?? String(err),
@@ -162,7 +162,7 @@ async function buildOpenPositionTx({
 async function _buildOpenPositionTx({
     walletAddress,
     side,
-    inputAmountUsd,
+    inputAmountSol,
     leverage,
     symbol = 'SOL',
     network,
@@ -171,7 +171,7 @@ async function _buildOpenPositionTx({
     const net = network ?? solana.network ?? 'mainnet-beta';
 
     logger.info('Flash: building open-position transaction', {
-        walletAddress, side, inputAmountUsd, leverage, symbol, net,
+        walletAddress, side, inputAmountSol, leverage, symbol, net,
     });
 
     const connection    = new Connection(solana.rpcUrl, 'confirmed');
@@ -205,8 +205,15 @@ async function _buildOpenPositionTx({
     );
 
     // ── Resolve tokens ────────────────────────────────────────────────────────
-    const inputTokenSymbol  = 'USDC';
+    const inputTokenSymbol  = 'SOL';
     const outputTokenSymbol = symbol.toUpperCase();
+
+    // The Flash market's collateral token depends on direction:
+    //   SHORT → always USDC  (all short markets use USDC collateral)
+    //   LONG  → same as target, except BNB LONG uses BTC collateral
+    const collateralTokenSymbol = side === 'short'
+        ? 'USDC'
+        : (outputTokenSymbol === 'BNB' ? 'BTC' : outputTokenSymbol);
 
     const inputToken  = POOL_CONFIG.tokens.find((t) => t.symbol === inputTokenSymbol);
     const outputToken = POOL_CONFIG.tokens.find((t) => t.symbol === outputTokenSymbol);
@@ -241,7 +248,7 @@ async function _buildOpenPositionTx({
     );
 
     const collateralWithFee = uiDecimalsToNative(
-        inputAmountUsd.toString(),
+        inputAmountSol.toString(),
         inputToken.decimals,
     );
 
@@ -308,7 +315,7 @@ async function _buildOpenPositionTx({
     // ── Build swapAndOpen instructions ────────────────────────────────────────
     const openPositionData = await flashClient.swapAndOpen(
         outputToken.symbol,
-        outputToken.symbol,
+        collateralTokenSymbol,
         inputToken.symbol,
         collateralWithFee,
         priceAfterSlippage,
@@ -405,7 +412,10 @@ async function buildClosePositionTx({ walletAddress, side, symbol = 'ETH', netwo
 
     const flashSide           = side === 'long' ? Side.Long : Side.Short;
     const targetTokenSymbol   = symbol.toUpperCase();
-    const collateralSymbol    = 'USDC';
+    // Must match the collateral used when the position was opened (same market lookup logic).
+    const collateralSymbol = side === 'short'
+        ? 'USDC'
+        : (targetTokenSymbol === 'BNB' ? 'BTC' : targetTokenSymbol);
 
     // Fetch current price for slippage calc
     const priceMap      = await fetchPrices(POOL_CONFIG);

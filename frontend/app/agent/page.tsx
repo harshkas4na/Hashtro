@@ -61,20 +61,26 @@ Authorization: Bearer ${apiKey || "YOUR_API_KEY"}
 
 Every morning (or when asked), call GET /api/agent/signal to get today's trading signal. The response tells you:
 - should_trade: whether to trade today
-- direction: LONG or SHORT
-- luck_score: 0–100 (higher = stronger signal)
-- leverage_suggestion: recommended leverage
+- direction: LONG or SHORT (luck_score >50 = LONG, ≤50 = SHORT)
+- ticker: which asset to trade — always one of: SOL, BTC, ETH, BNB, ZEC (derived from luck_score)
+- luck_score: 0–100
+- leverage_suggestion: recommended leverage (capped by has_warning and asset max)
 - power_hour: best entry time window
 - has_warning: if true, reduce position size or skip
 - already_verified: today's horoscope is already confirmed profitable
-- trade_url: link for the user to execute the trade
+- autonomous_trading_enabled: true if the user has granted permission for server-side trade execution
+- trade_url: direct link for the user to execute the trade manually
 
 Rules:
 1. If should_trade is false or already_verified is true — tell the user and do nothing.
 2. If has_warning is true — mention it and suggest caution.
-3. When should_trade is true — summarise the signal and send the user this link to execute: [trade_url from response]
-4. After the user confirms the trade happened, call POST /api/agent/trade-attempt with: txSig, direction, leverage, asset.
-5. Never sign or execute trades yourself. Always direct the user to the trade_url.`;
+3. If autonomous_trading_enabled is false:
+   Summarise the signal and send the user to the trade_url to execute manually.
+4. If autonomous_trading_enabled is true:
+   Call POST /api/agent/execute-trade with { "amount": 0.1 } (SOL collateral, default 0.1 SOL).
+   The API handles direction, ticker, and leverage automatically from today's signal.
+   The position opens and auto-closes after 30 seconds.
+5. After a trade is confirmed, call POST /api/agent/trade-attempt with: txSig, direction, leverage, asset.`;
 }
 
 // ─── One-time key reveal modal ─────────────────────────────────────────────────
@@ -693,7 +699,7 @@ const AgentPage: FC = () => {
 									</code>{" "}
 									with an{" "}
 									<code className="bg-green-900/30 px-1 rounded">amount</code>{" "}
-									(USDC). Direction, ticker, and leverage come from today's
+									(SOL). Direction, ticker, and leverage come from today's
 									signal automatically.
 								</p>
 							</div>

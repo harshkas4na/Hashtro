@@ -15,6 +15,28 @@ const MAX_TRADE_AMOUNT_USD = 1000;
 
 const AGENT_MAX_RETRIES = 10;
 
+// Flash Protocol perpetuals support exactly these 5 assets.
+// Ticker is derived from luck_score, mirroring frontend getCoinFromLuckScore().
+const COIN_ALLOCATIONS = [
+    { symbol: 'BNB', min: 0,   max: 10  },
+    { symbol: 'BTC', min: 10,  max: 20  },
+    { symbol: 'ZEC', min: 20,  max: 30  },
+    { symbol: 'ETH', min: 30,  max: 40  },
+    { symbol: 'SOL', min: 40,  max: 50  },
+    { symbol: 'BNB', min: 50,  max: 60  },
+    { symbol: 'BTC', min: 60,  max: 70  },
+    { symbol: 'SOL', min: 70,  max: 80  },
+    { symbol: 'ETH', min: 80,  max: 90  },
+    { symbol: 'ZEC', min: 90,  max: 101 },
+];
+
+function getTickerFromLuckScore(luckScore) {
+    if (luckScore === null || luckScore === undefined) return null;
+    const score = Math.max(0, Math.min(100, luckScore));
+    const found = COIN_ALLOCATIONS.find((c) => score >= c.min && score < c.max);
+    return found ? found.symbol : 'SOL';
+}
+
 // ─── Asset mapping (lucky_color → ticker) ─────────────────────────────────────
 // Mirrors the same mapping used by the AI server and the frontend.
 // Applied here as a fallback so ticker/max_leverage are always populated even
@@ -57,16 +79,16 @@ function buildSignal(card, alreadyVerified, tradeAttemptsToday) {
     const hasWarning  = back.remedy != null;
     const luckyNumber = assets.number ? parseInt(assets.number, 10) : null;
 
-    // Resolve ticker + max_leverage from lucky_color if the AI server didn't enrich them.
-    // This handles stale cached cards returned by the AI server.
-    const colorInfo   = (!assets.ticker || !assets.max_leverage)
-        ? lookupAssetByColor(assets.color)
-        : null;
-
-    const ticker     = assets.ticker      ?? colorInfo?.ticker      ?? null;
-    const assetName  = assets.name        ?? colorInfo?.name        ?? null;
-    const assetEmoji = assets.emoji       ?? colorInfo?.emoji       ?? null;
+    // Resolve astrological lucky asset info from the card (for display/info purposes).
+    const colorInfo  = lookupAssetByColor(assets.color);
+    const assetName  = assets.name  ?? colorInfo?.name  ?? null;
+    const assetEmoji = assets.emoji ?? colorInfo?.emoji ?? null;
     const maxLeverage = assets.max_leverage ?? colorInfo?.max_leverage ?? null;
+
+    // The Flash Protocol trade ticker is derived from luck_score using the same
+    // 5-asset mapping as the frontend (getCoinFromLuckScore). This overrides the
+    // card's lucky_assets.ticker which is an astrological lucky asset, not a trade asset.
+    const ticker = getTickerFromLuckScore(luckScore);
 
     const direction = luckScore !== null ? (luckScore > 50 ? 'LONG' : 'SHORT') : null;
 
@@ -315,11 +337,12 @@ class AgentController {
 
             const { frontend } = getConfig();
             return successResponse(res, {
-                wallet_address:          walletAddress,
-                date:                    horoscope.date,
-                horoscope_ready:         true,
-                last_trade_attempt_at:   horoscope.last_trade_attempt_at ?? null,
-                trade_url:               `${frontend.url}/cards`,
+                wallet_address:             walletAddress,
+                date:                       horoscope.date,
+                horoscope_ready:            true,
+                autonomous_trading_enabled: user.trading_delegated ?? false,
+                last_trade_attempt_at:      horoscope.last_trade_attempt_at ?? null,
+                trade_url:                  `${frontend.url}/cards`,
                 ...signal,
             });
         } catch (error) {
@@ -477,8 +500,11 @@ class AgentController {
             const walletAddress = req.agentWallet;
             const { amount } = req.body;
 
-            // ── Collateral (hardcoded) ────────────────────────────────────────
-            const collateralUsd = 2; // hardcoded to $2 USDC
+            // ── Validate SOL collateral amount ────────────────────────────────
+            const collateralSol = parseFloat(amount);
+            if (!collateralSol || collateralSol < 0.04 || collateralSol > 10) {
+                return errorResponse(res, 'amount must be a number between 0.04 and 10 (SOL)', 400);
+            }
 
             // ── Load user + check delegation ──────────────────────────────────
             const user = await userService.findUserByWallet(walletAddress);
@@ -523,10 +549,10 @@ class AgentController {
             const { solana } = getConfig();
             const side     = signal.direction === 'LONG' ? 'long' : 'short';
             const leverage = signal.leverage_suggestion ?? 1;
-            const symbol   = 'ETH'; // hardcoded for now
+            const symbol   = signal.ticker ?? 'SOL'; // derived from luck_score via COIN_ALLOCATIONS
 
             logger.info('Agent execute-trade: building transaction', {
-                walletAddress, side, leverage, symbol, collateralUsd,
+                walletAddress, side, leverage, symbol, collateralSol,
             });
 
             // ── Build Flash transaction (server-side) ─────────────────────────
@@ -535,7 +561,7 @@ class AgentController {
                 buildResult = await buildOpenPositionTx({
                     walletAddress,
                     side,
-                    inputAmountUsd: collateralUsd,
+                    inputAmountSol: collateralSol,
                     leverage,
                     symbol,
                     network: solana.network,
@@ -572,7 +598,7 @@ class AgentController {
                 direction: signal.direction,
                 ticker:    symbol,
                 leverage,
-                collateral_usd: collateralUsd,
+                collateral_sol: collateralSol,
             }).catch(() => {});
 
             logger.info('Agent execute-trade: success', { walletAddress, txSig, side, symbol, leverage });
@@ -597,7 +623,7 @@ class AgentController {
                 direction:            signal.direction,
                 ticker:               symbol,
                 leverage,
-                collateral_usd:       collateralUsd,
+                collateral_sol:       collateralSol,
                 estimated_price:      buildResult.estimatedPrice,
                 trade_attempts_today: attemptResult.trade_attempts,
                 can_retry:            attemptResult.trade_attempts < AGENT_MAX_RETRIES,

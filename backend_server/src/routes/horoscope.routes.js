@@ -22,7 +22,11 @@ const router = express.Router();
  *           $ref: '#/components/schemas/WalletAddress'
  *     responses:
  *       200:
- *         description: Status returned
+ *         description: |
+ *           Status returned. The `status` field drives the response shape:
+ *           - `new_user` — wallet is not registered. Only `status` is present.
+ *           - `clear_to_pay` — registered but no horoscope generated today. Only `status` is present.
+ *           - `exists` — horoscope exists for today. `card`, `verified`, and `date` are present.
  *         content:
  *           application/json:
  *             schema:
@@ -33,13 +37,17 @@ const router = express.Router();
  *                 status:
  *                   type: string
  *                   enum: [new_user, exists, clear_to_pay]
+ *                   description: "`new_user` = not registered, `clear_to_pay` = registered but no card today, `exists` = card available"
  *                 card:
  *                   $ref: '#/components/schemas/HoroscopeCard'
+ *                   description: Present only when status = exists
  *                 verified:
  *                   type: boolean
+ *                   description: Present only when status = exists
  *                 date:
  *                   type: string
  *                   format: date
+ *                   description: Present only when status = exists
  */
 router.get(
     '/status',
@@ -124,7 +132,8 @@ router.post(
  *                 description: On-chain transaction signature
  *               pnlPercent:
  *                 type: number
- *                 description: Profit/loss percentage (must be > 0)
+ *                 description: Profit/loss percentage — must be strictly greater than 0 (break-even trades are rejected)
+ *                 exclusiveMinimum: 0
  *                 example: 5.2
  *     responses:
  *       200:
@@ -140,7 +149,7 @@ router.post(
  *                   type: boolean
  *                   example: true
  *       400:
- *         description: Losing trade or transaction not found on-chain
+ *         description: Losing or break-even trade (pnlPercent must be > 0)
  *       404:
  *         description: User not found
  */
@@ -200,6 +209,10 @@ router.post(
  *                       date:
  *                         type: string
  *                         format: date
+ *                       horoscopeText:
+ *                         type: string
+ *                         nullable: true
+ *                         description: The raw horoscope text (legacy field; full card is in the card field)
  *                       verified:
  *                         type: boolean
  *                       createdAt:

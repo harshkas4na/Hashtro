@@ -21,7 +21,7 @@ const router = express.Router();
  *       - `direction` — LONG or SHORT derived from `luck_score` (>50 = LONG)
  *       - `leverage_suggestion` — capped at 3× when `has_warning` is true, 5× otherwise
  *       - `should_trade` — false when already verified or no score available
- *       - `can_retry` — false once `trade_attempts_today` reaches `max_retries` (2)
+ *       - `can_retry` — false once `trade_attempts_today` reaches `max_retries` (10)
  *     tags: [Agent]
  *     security:
  *       - AgentApiKey: []
@@ -84,8 +84,12 @@ router.get(
  *          (`trading_delegated = true`)
  *       3. A horoscope must exist for today (call `GET /agent/signal` first)
  *
- *       The signal's `direction`, `ticker`, and `leverage_suggestion` are used
- *       automatically — you only supply the USDC collateral `amount`.
+ *       The signal's `direction`, `ticker` (one of SOL/BTC/ETH/BNB/ZEC derived from luck_score),
+ *       and `leverage_suggestion` are used automatically — you only supply the SOL collateral `amount`.
+ *
+ *       The position auto-closes after 30 seconds. The API records the trade attempt and fires
+ *       a `trade_executed` webhook event immediately. After close, it fires `trade_verified`
+ *       if the trade was profitable.
  *     tags: [Agent]
  *     security:
  *       - AgentApiKey: []
@@ -99,15 +103,19 @@ router.get(
  *             properties:
  *               amount:
  *                 type: number
- *                 description: USDC collateral in UI units (e.g. 50 = $50)
- *                 example: 50
- *                 minimum: 1
- *                 maximum: 1000
+ *                 description: SOL collateral amount (e.g. 0.1 = 0.1 SOL). Min 0.04, max 10.
+ *                 example: 0.1
+ *                 minimum: 0.04
+ *                 maximum: 10
  *     responses:
  *       200:
  *         description: Trade executed on-chain
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ExecuteTradeResponse'
  *       400:
- *         description: Invalid amount
+ *         description: Invalid amount (must be 0.04–10 SOL)
  *       403:
  *         description: Autonomous trading not enabled
  *       404:
@@ -117,7 +125,7 @@ router.get(
  *       422:
  *         description: Privy wallet not linked — user must re-register
  *       429:
- *         description: Max retries reached
+ *         description: Max retries (10) reached
  *       502:
  *         description: Transaction build or Privy signing failed
  */
@@ -169,7 +177,7 @@ router.post(
  *       409:
  *         description: Horoscope already verified, no further trades needed
  *       429:
- *         description: Max retries (2) reached for today
+ *         description: Max retries (10) reached for today
  */
 router.post(
     '/trade-attempt',
@@ -198,8 +206,8 @@ router.post(
  *
  *       **Supported events:**
  *       - `horoscope_ready` — a new card was generated for this wallet
+ *       - `trade_executed` — a trade was opened via `POST /agent/execute-trade`
  *       - `trade_verified` — a profitable trade marked the horoscope as verified
- *       - `trade_failed` — reserved for Phase 4 (auto trade execution)
  *     tags: [Agent]
  *     security:
  *       - AgentApiKey: []
