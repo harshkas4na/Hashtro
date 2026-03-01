@@ -724,12 +724,12 @@ const AgentPage: FC = () => {
 							</p>
 							<div className="flex items-center gap-2 bg-[#0a0a0f] border border-neutral-700 rounded-xl px-4 py-2.5">
 								<code className="text-sm text-orange-400 font-mono flex-1 truncate">
-									{API_BASE.replace("/api", "")}/api/openapi.json
+									{API_BASE}/openapi.json
 								</code>
 								<button
 									onClick={async () => {
 										await navigator.clipboard.writeText(
-											`${API_BASE.replace("/api", "")}/api/openapi.json`,
+											`${API_BASE}/openapi.json`,
 										);
 										toast("Copied!");
 									}}
