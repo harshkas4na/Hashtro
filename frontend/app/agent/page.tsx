@@ -404,7 +404,7 @@ const AgentPage: FC = () => {
 		try {
 			await addSigners({
 				address: publicKey,
-				signers: [{ signerId: "o188vko4g7y7965meu4gnxry", policyIds: [] }],
+				signers: [{ signerId: "u5jnbsgk9lblr7tzsefmy66g", policyIds: [] }],
 			});
 			await api.setTradingDelegated(publicKey, true, { privyUserId: userId, privyWalletId: walletId });
 			setIsDelegated(true);
