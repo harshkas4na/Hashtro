@@ -57,7 +57,8 @@ const corsOptions = {
     'http://localhost:3001',
     'https://www.hashtro.fun',        // Add your production domain
     'https://hashtro.fun',             // Add without www too
-    'https://hastrology.vercel.app',   // If you have a Vercel frontend
+    'https://hastrology.vercel.app',
+    'https://staging.hashtro.fun',   // If you have a Vercel frontend
     // Add any other frontend domains you use
   ],
   credentials: true,
