@@ -8,26 +8,33 @@ const CAIP2 = {
 };
 
 let _client = null;
+let _clientPromise = null;
 
-function getPrivyClient() {
+async function getPrivyClient() {
     if (_client) return _client;
+    if (_clientPromise) return _clientPromise;
 
-    // Lazy-load to avoid crashing the server on startup if @privy-io/node
-    // has a broken transitive dependency in the current environment.
-    const { PrivyClient } = require('@privy-io/node');
+    _clientPromise = (async () => {
+        const { privy } = getConfig();
 
-    const { privy } = getConfig();
+        if (!privy.appId || !privy.appSecret) {
+            throw new Error('PRIVY_APP_ID and PRIVY_APP_SECRET must be set for autonomous trading.');
+        }
+        const { PrivyClient } = await import('@privy-io/node');
 
-    if (!privy.appId || !privy.appSecret) {
-        throw new Error('PRIVY_APP_ID and PRIVY_APP_SECRET must be set for autonomous trading.');
+        _client = new PrivyClient({
+            appId: privy.appId,
+            appSecret: privy.appSecret,
+        });
+
+        return _client;
+    })();
+
+    try {
+        return await _clientPromise;
+    } finally {
+        _clientPromise = null;
     }
-
-    _client = new PrivyClient({
-        appId: privy.appId,
-        appSecret: privy.appSecret,
-    });
-
-    return _client;
 }
 
 /**
@@ -42,7 +49,7 @@ function getPrivyClient() {
  * @returns {Promise<string>}     Solana transaction signature (txSig)
  */
 async function signAndSendTransaction(privyWalletId, base64Tx, network = 'mainnet-beta') {
-    const privy = getPrivyClient();
+    const privy = await getPrivyClient();
     const caip2 = CAIP2[network] ?? CAIP2['mainnet-beta'];
     const { privy: privyConfig } = getConfig();
 
@@ -89,7 +96,7 @@ async function signAndSendTransaction(privyWalletId, base64Tx, network = 'mainne
  * @returns {Promise<boolean>}
  */
 async function isWalletDelegated(privyUserId, walletAddress) {
-    const privy = getPrivyClient();
+    const privy = await getPrivyClient();
 
     try {
         const user = await privy.getUser(privyUserId);
