@@ -36,7 +36,7 @@ from google.genai import types
 
 load_dotenv()
 
-API_BASE     = os.getenv("HASTROLOGY_API_URL", "https://api.hashtro.fun/api")
+API_BASE     = os.getenv("HASTROLOGY_API_URL", "https://server.hashtro.fun/api")
 API_KEY      = os.getenv("HASTROLOGY_API_KEY", "")
 GEMINI_KEY   = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash"
