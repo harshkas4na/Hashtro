@@ -14,9 +14,10 @@ class HoroscopeService {
      * @returns {string} Today's date
      */
     getTodayDateString() {
-        // Return date in IST (Asia/Kolkata)
-        // using 'en-CA' locale gives YYYY-MM-DD format
-        return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        // Use UTC so "today" is the same for all users regardless of their
+        // location. IST (Asia/Kolkata) was biased: US users on Feb 27 would
+        // receive a Feb 28 slot if IST had already crossed midnight.
+        return new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
     }
 
     /**
@@ -121,14 +122,21 @@ class HoroscopeService {
      * @param {number} limit - Number of results to return
      * @returns {Promise<Array>} Array of horoscopes
      */
-    async getUserHoroscopes(walletAddress, limit = 10) {
+    async getUserHoroscopes(walletAddress, limit = 10, afterDate = null) {
         try {
-            const { data, error } = await this.supabase
+            let query = this.supabase
                 .from('horoscopes')
                 .select('*')
                 .eq('wallet_address', walletAddress)
                 .order('date', { ascending: false })
                 .limit(limit);
+
+            // Cursor-based pagination: only return rows older than afterDate
+            if (afterDate) {
+                query = query.lt('date', afterDate);
+            }
+
+            const { data, error } = await query;
 
             if (error) {
                 logger.error('Get user horoscopes error:', error);
@@ -222,6 +230,86 @@ class HoroscopeService {
             logger.error('Verify horoscope error:', error);
             throw error;
         }
+    }
+
+    /**
+     * Increment trade_attempts counter for today's horoscope.
+     * Called before the trade verification check so every attempt is counted,
+     * whether it succeeds or not. Uses a Postgres raw increment to avoid a
+     * read-modify-write race condition.
+     * @param {string} walletAddress - User's wallet address
+     * @returns {Promise<number>} New trade_attempts value after increment
+     */
+    async incrementTradeAttempts(walletAddress) {
+        try {
+            const today = this.getTodayDateString();
+
+            // Use Postgres raw SQL for atomic increment
+            const { data, error } = await this.supabase.rpc('increment_trade_attempts', {
+                p_wallet: walletAddress,
+                p_date: today,
+            });
+
+            if (error) {
+                // If the RPC doesn't exist yet (schema not migrated) log a warning
+                // and fall back to a best-effort non-atomic update.
+                if (error.code === 'PGRST202' || error.code === '42883') {
+                    logger.warn('increment_trade_attempts RPC not found, using fallback');
+                    const { data: row } = await this.supabase
+                        .from('horoscopes')
+                        .select('trade_attempts')
+                        .eq('wallet_address', walletAddress)
+                        .eq('date', today)
+                        .single();
+                    const current = row?.trade_attempts ?? 0;
+                    await this.supabase
+                        .from('horoscopes')
+                        .update({ trade_attempts: current + 1 })
+                        .eq('wallet_address', walletAddress)
+                        .eq('date', today);
+                    return current + 1;
+                }
+                logger.error('incrementTradeAttempts error:', error);
+                throw error;
+            }
+
+            logger.info('Trade attempt counted', { walletAddress, date: today, attempts: data });
+            return data;
+        } catch (error) {
+            // Non-fatal: don't let counter failure block the trade verification
+            logger.error('incrementTradeAttempts failed (non-fatal):', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Record that a trade was executed for today's horoscope.
+     * Increments trade_attempts (via existing RPC) and stamps last_trade_attempt_at.
+     * Called by the agent trade-attempt endpoint when the agent observes a trade.
+     *
+     * @param {string} walletAddress
+     * @returns {Promise<{ trade_attempts: number, last_trade_attempt_at: string }>}
+     */
+    async recordTradeAttempt(walletAddress) {
+        const today = this.getTodayDateString();
+        const now   = new Date().toISOString();
+
+        // Atomic increment via existing RPC
+        const newCount = await this.incrementTradeAttempts(walletAddress);
+
+        // Stamp last_trade_attempt_at — non-atomic follow-up, acceptable here
+        const { error } = await this.supabase
+            .from('horoscopes')
+            .update({ last_trade_attempt_at: now })
+            .eq('wallet_address', walletAddress)
+            .eq('date', today);
+
+        if (error) {
+            logger.warn('recordTradeAttempt: failed to set last_trade_attempt_at (non-fatal):', error.message);
+        }
+
+        logger.info('Trade attempt recorded', { walletAddress, date: today, newCount });
+        return { trade_attempts: newCount, last_trade_attempt_at: now };
     }
 }
 

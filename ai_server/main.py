@@ -2,6 +2,7 @@
 FastAPI + LangChain Horoscope Generator (Modular Architecture)
 Main application entry point
 """
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -17,7 +18,20 @@ from src.middleware.error_handler import (
     general_exception_handler
 )
 from src.middleware.rate_limiter import limiter, _rate_limit_exceeded_handler
+from src.middleware.correlation_id import CorrelationIdMiddleware
 from src.services.cache_service import cache_service
+
+# How often (in seconds) the background task sweeps for expired cache entries
+CACHE_CLEANUP_INTERVAL = 3600  # 1 hour
+
+
+async def _cache_cleanup_loop():
+    """Background task: periodically evict expired in-memory cache entries."""
+    while True:
+        await asyncio.sleep(CACHE_CLEANUP_INTERVAL)
+        removed = cache_service.cleanup_expired()
+        if removed:
+            logger.info(f"Cache cleanup: removed {removed} expired entries")
 
 
 @asynccontextmanager
@@ -26,17 +40,22 @@ async def lifespan(app: FastAPI):
     Lifespan events for startup and shutdown
     """
     # Startup
-    logger.info("🚀 Starting Hastrology AI Server")
+    logger.info("Starting Hastrology AI Server")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Cache enabled: {settings.cache_enabled}")
     logger.info(f"Rate limiting enabled: {settings.rate_limit_enabled}")
-    
+
+    # Start background cache cleanup task
+    cleanup_task = asyncio.create_task(_cache_cleanup_loop())
+    logger.info(f"Cache cleanup scheduled every {CACHE_CLEANUP_INTERVAL}s")
+
     yield
-    
+
     # Shutdown
+    cleanup_task.cancel()
     logger.info("Shutting down gracefully...")
     cache_service.clear()
-    logger.info("✓ Cache cleared")
+    logger.info("Cache cleared")
 
 
 # Initialize FastAPI application
@@ -50,6 +69,10 @@ app = FastAPI(
 # Add rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Correlation ID — reads X-Request-ID from backend or generates a new UUID.
+# Must be added after exception handlers so the header is set even on errors.
+app.add_middleware(CorrelationIdMiddleware)
 
 # Add CORS middleware
 app.add_middleware(

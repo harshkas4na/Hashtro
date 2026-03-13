@@ -382,8 +382,12 @@ class AstroCalculator:
                     else:
                         intensity = "supportive"
                     
-                    # Check if applying
-                    is_applying = transit_speed != 0  # Simplified check
+                    # Check if applying using orb-comparison method.
+                    # Natal positions are fixed (speed=0); the transit planet
+                    # moves, so only transit_speed matters.
+                    is_applying = self._is_aspect_applying(
+                        natal_lon, transit_lon, 0, transit_speed, angle
+                    )
                     
                     activations.append(TimeLordActivation(
                         transiting_planet=transit_planet,

@@ -34,6 +34,24 @@ const envSchema = Joi.object({
     // CORS
     ALLOWED_ORIGINS: Joi.string().default('*')
         .description('Comma-separated list of allowed CORS origins'),
+
+    // Frontend
+    FRONTEND_URL: Joi.string().uri().default('https://hashtro.fun')
+        .description('Public frontend URL — used to build trade_url in agent signal'),
+
+    // Privy — server-side delegated actions
+    PRIVY_APP_ID: Joi.string().optional()
+        .description('Privy App ID for server-side wallet operations'),
+    PRIVY_APP_SECRET: Joi.string().optional()
+        .description('Privy App Secret for server-side wallet operations'),
+    PRIVY_AUTHORIZATION_PRIVATE_KEY: Joi.string().optional()
+        .description('Base64-encoded PKCS8 private key for the Privy authorization key quorum (shown once when creating the key in Privy Dashboard → Wallet infrastructure → Authorization keys)'),
+
+    // Solana
+    SOLANA_RPC_URL: Joi.string().uri().default('https://api.mainnet-beta.solana.com')
+        .description('Solana RPC endpoint used for building and confirming transactions'),
+    SOLANA_NETWORK: Joi.string().valid('mainnet-beta', 'devnet').default('mainnet-beta')
+        .description('Solana network (mainnet-beta or devnet)'),
 }).unknown(true); // Allow other env vars
 
 /**
@@ -84,7 +102,19 @@ const getConfig = () => {
             allowedOrigins: env.ALLOWED_ORIGINS === '*'
                 ? '*'
                 : env.ALLOWED_ORIGINS.split(',').map(o => o.trim()),
-        }
+        },
+        frontend: {
+            url: env.FRONTEND_URL,
+        },
+        privy: {
+            appId: env.PRIVY_APP_ID,
+            appSecret: env.PRIVY_APP_SECRET,
+            authorizationPrivateKey: env.PRIVY_AUTHORIZATION_PRIVATE_KEY,
+        },
+        solana: {
+            rpcUrl: env.SOLANA_RPC_URL,
+            network: env.SOLANA_NETWORK,
+        },
     };
 };
 

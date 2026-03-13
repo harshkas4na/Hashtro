@@ -186,6 +186,19 @@ export interface User {
 	tradeMadeAt?: string;
 }
 
+export interface HistoryEntry {
+	date: string;
+	horoscopeText: string;
+	verified: boolean;
+	createdAt: string;
+}
+
+export interface HistoryResponse {
+	count: number;
+	next_cursor: string | null;
+	horoscopes: HistoryEntry[];
+}
+
 export interface AppState {
 	wallet: string | null;
 	user: User | null;
@@ -241,4 +254,23 @@ export interface FetchUserResult {
 export interface TradeTimeData {
 	walletAddress: string;
 	tradeMadeAt: string;
+}
+
+export interface ApiKey {
+	id: string;
+	key_prefix: string;
+	label: string;
+	created_at: string;
+	last_used_at: string | null;
+	revoked: boolean;
+}
+
+export type WebhookEvent = 'horoscope_ready' | 'trade_verified';
+
+export interface Webhook {
+	id: string;
+	url: string;
+	events: WebhookEvent[];
+	active: boolean;
+	created_at: string;
 }

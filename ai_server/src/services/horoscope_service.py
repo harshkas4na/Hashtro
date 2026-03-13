@@ -4,6 +4,7 @@ High-fidelity horoscope generation using Swiss Ephemeris and Cosmic Data Object
 """
 import json
 import re
+import time
 from datetime import datetime, date
 from typing import Optional, Dict, Any, Tuple
 
@@ -17,13 +18,7 @@ from langchain_core.exceptions import OutputParserException
 from ..config.settings import settings
 from ..config.logger import logger
 from .cache_service import cache_service
-from ..prompts.senior_astrologer_prompt import (
-    SENIOR_ASTROLOGER_PROMPT, 
-    calculate_vibe_status, 
-    SENIOR_ASTROLOGER_PROMPT, 
-    calculate_vibe_status, 
-    get_energy_emoji
-)
+from ..prompts.senior_astrologer_prompt import SENIOR_ASTROLOGER_PROMPT
 from pathlib import Path
 import random
 
@@ -104,11 +99,15 @@ class HoroscopeService:
     Cosmic Data Objects for AI-powered interpretation.
     """
     
+    # Circuit breaker settings
+    _CB_FAILURE_THRESHOLD = 3      # open after N consecutive Gemini failures
+    _CB_RESET_TIMEOUT_S   = 60     # seconds before half-open probe is allowed
+
     def __init__(self):
         try:
             # Using Gemini 1.5-flash for speed and better JSON adherence
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash", 
+                model=settings.llm_model,
                 google_api_key=settings.google_api_key,
                 temperature=0.75,  # Slightly lower for more consistent output
                 max_retries=3
@@ -119,13 +118,43 @@ class HoroscopeService:
                 partial_variables={"format_instructions": self.output_parser.get_format_instructions()}
             )
             self.chain = self.prompt | self.llm
-            
+
             self.cdo_enabled = CDO_ENABLED
+
+            # Circuit breaker state (in-process; resets on restart)
+            self._cb_failures: int = 0
+            self._cb_opened_at: Optional[float] = None
+
             logger.info(f"HoroscopeService initialized (CDO: {self.cdo_enabled})")
-            
+
         except Exception as e:
             logger.error(f"Initialization failed: {e}")
             raise
+
+    # ------------------------------------------------------------------
+    # Circuit breaker helpers
+    # ------------------------------------------------------------------
+
+    def _cb_is_open(self) -> bool:
+        """Return True when the Gemini circuit is open and calls should be rejected."""
+        if self._cb_failures < self._CB_FAILURE_THRESHOLD:
+            return False
+        elapsed = time.monotonic() - (self._cb_opened_at or 0)
+        if elapsed >= self._CB_RESET_TIMEOUT_S:
+            # Half-open: allow one probe
+            logger.info("Gemini circuit breaker half-open, allowing probe")
+            return False
+        return True
+
+    def _cb_record_success(self) -> None:
+        self._cb_failures = 0
+        self._cb_opened_at = None
+
+    def _cb_record_failure(self) -> None:
+        self._cb_failures += 1
+        if self._cb_failures >= self._CB_FAILURE_THRESHOLD:
+            self._cb_opened_at = time.monotonic()
+            logger.warning(f"Gemini circuit breaker opened after {self._cb_failures} consecutive failures")
     
     def _parse_date(self, dob: str) -> datetime:
         """Parse date of birth string into datetime object"""
@@ -228,8 +257,12 @@ class HoroscopeService:
             use_sidereal=False
         )
         
-        # Get current transits
-        current_datetime = datetime.now()
+        # Get current transits.
+        # Use UTC so datetime_to_julian(dt, timezone_offset=0) produces the
+        # correct Julian Day regardless of the server's local timezone.
+        # datetime.now() would return server local time, giving wrong results
+        # when the server is not in UTC.
+        current_datetime = datetime.utcnow()
         transit_planets = ephemeris_service.get_current_transits(
             current_datetime=current_datetime,
             latitude=latitude,
@@ -332,7 +365,6 @@ class HoroscopeService:
         """
         # Check cache first
         if use_cache:
-            cache_key = f"{dob}_{birth_time}_{latitude}_{longitude}"
             cached = cache_service.get(dob, birth_time, birth_place)
             if cached:
                 return json.loads(cached), True, "cdo"
@@ -420,14 +452,26 @@ class HoroscopeService:
             "bearish_moods": bearish_moods_str
         }
         
+        # Reject immediately if the circuit is open (Gemini is flaky/down).
+        if self._cb_is_open():
+            logger.warning("Gemini circuit breaker is open — returning fallback card")
+            return self._get_fallback_card(
+                cdo_summary.get("time_lord", "Sun"),
+                cdo_summary.get("sect", "Diurnal")
+            ), False, "fallback"
+
         try:
             # Invoke AI
             raw_output = await self.chain.ainvoke(prompt_vars)
-            
+
+            # Successful call — reset circuit breaker
+            self._cb_record_success()
+
             # Parse response
             try:
                 card_data = self.output_parser.parse(raw_output.content)
-            except:
+            except Exception as parse_err:
+                logger.warning(f"Output parser failed, attempting JSON extraction: {parse_err}")
                 # Fallback: extract JSON from markdown blocks
                 match = re.search(r'\{.*\}', raw_output.content, re.DOTALL)
                 if match:
@@ -474,10 +518,10 @@ class HoroscopeService:
                     card_data["back"]["lucky_assets"]["emoji"] = asset_info.get("emoji")
                     card_data["back"]["lucky_assets"]["category"] = asset_info.get("category")
                 else:
-                    # Fallback if AI picked a hallucinated color
-                    # Pick a random one deterministic based on color string
-                    idx = len(color or "") % len(mapping) if mapping else 0
-                    fallback_key = list(mapping.keys())[idx] if mapping else "Gold"
+                    # Fallback if AI picked a hallucinated color — pick a
+                    # truly random key instead of the biased len(color) % n
+                    # modulo which always maps short color names to the same slot.
+                    fallback_key = random.choice(list(mapping.keys())) if mapping else "Gold"
                     asset_info = mapping.get(fallback_key)
                     if asset_info:
                         card_data["back"]["lucky_assets"]["color"] = fallback_key
@@ -487,9 +531,28 @@ class HoroscopeService:
                         card_data["back"]["lucky_assets"]["emoji"] = asset_info.get("emoji")
                         card_data["back"]["lucky_assets"]["category"] = asset_info.get("category")
 
+            # Enforce luck_score / vibe_status consistency.
+            # The AI prompt instructs this but it can still hallucinate
+            # mismatched pairs (e.g. luck_score=78 with vibe_status="Eclipse").
+            front = card_data.get("front", {})
+            luck_score = front.get("luck_score", 50)
+            correct_vibe = (
+                "Stellar" if luck_score >= 80 else
+                "Ascending" if luck_score >= 51 else
+                "Shaky" if luck_score >= 40 else
+                "Eclipse"
+            )
+            if front.get("vibe_status") != correct_vibe:
+                logger.warning(
+                    f"Correcting vibe_status mismatch: luck_score={luck_score} "
+                    f"had vibe_status={front.get('vibe_status')!r}, "
+                    f"correcting to {correct_vibe!r}"
+                )
+                card_data["front"]["vibe_status"] = correct_vibe
+
             # Validate and enhance
             validated_card = AstroCard(**card_data)
-            
+
             # Add CDO summary to response
             card_dict = validated_card.model_dump()
             if cdo_summary:
@@ -502,6 +565,12 @@ class HoroscopeService:
             return card_dict, False, generation_mode
             
         except Exception as e:
+            # Record failure against the Gemini circuit breaker.
+            # OutputParserException means the API responded but the JSON was
+            # malformed — that's still a degraded state worth tracking.
+            # Any exception here ultimately means we couldn't serve the user,
+            # so counting all failures is the safest policy.
+            self._cb_record_failure()
             logger.error(f"Generation failure: {e}")
             return self._get_fallback_card(
                 cdo_summary.get("time_lord", "Sun"),
@@ -514,7 +583,8 @@ class HoroscopeService:
             birth_date = self._parse_date(dob)
             zodiac = self._get_fallback_zodiac(birth_date.day, birth_date.month)
             ruler = self._get_fallback_ruler(zodiac)
-        except:
+        except Exception as e:
+            logger.warning(f"Fallback summary date parse failed: {e}, defaulting to Aries/Mars")
             zodiac = "Aries"
             ruler = "Mars"
         
@@ -533,13 +603,35 @@ class HoroscopeService:
             "malefic_severity": "constructive"
         }
     
+    # Per-planet fallback flavour text so the error card reflects the user's
+    # actual Time Lord rather than always blaming Mercury.
+    _FALLBACK_FLAVOUR = {
+        "Sun":     ("Solar flare disrupting cosmic servers",
+                    "The Sun is overexposing the signal. Shield your chart."),
+        "Moon":    ("Luna is deep in reflection — your reading is on hold",
+                    "Lunar tides are pulling the data back. Breathe and wait."),
+        "Mercury": ("Mercury retrograde in the cosmic servers",
+                    "HODL tight. Mercury will station direct shortly."),
+        "Venus":   ("Venus is counting cosmic coins — servers are busy",
+                    "The love planet diverted bandwidth. Beauty takes time."),
+        "Mars":    ("Mars combat mode triggered server interference",
+                    "Red planet energy is strong. Channel it into patience."),
+        "Jupiter": ("Jupiter expanding beyond available bandwidth",
+                    "Too much cosmic abundance to process at once. Try again."),
+        "Saturn":  ("Saturn imposed a time limit on the cosmic pipeline",
+                    "Saturnian delays are temporary. Discipline pays off."),
+    }
+    _FALLBACK_DEFAULT = ("The stars are recalibrating…",
+                         "HODL tight. The cosmos will align shortly.")
+
     def _get_fallback_card(self, time_lord: str, sect: str) -> Dict[str, Any]:
-        """Generate fallback card when everything fails"""
+        """Generate fallback card when everything fails, varied by time lord."""
+        hook_1, hook_2 = self._FALLBACK_FLAVOUR.get(time_lord, self._FALLBACK_DEFAULT)
         return AstroCard(
             front=HoroscopeFront(
                 tagline="The stars are recalibrating... ✨",
-                hook_1="Mercury retrograde in the cosmic servers",
-                hook_2="HODL tight. The stars will align shortly.",
+                hook_1=hook_1,
+                hook_2=hook_2,
                 luck_score=50,
                 vibe_status="Shaky",
                 energy_emoji="🔮",
@@ -548,12 +640,12 @@ class HoroscopeService:
                 profection_house=1
             ),
             back=HoroscopeBack(
-                detailed_reading="Mercury retrograde in the cosmic servers. Your chart is being processed through the ethers. Check back soon for your personalized reading.",
+                detailed_reading=f"{hook_1}. Your chart is being processed through the ethers. Check back soon for your personalized reading.",
                 hustle_alpha="Focus on grounding activities today. The stars will align shortly.",
                 shadow_warning="Avoid making major decisions until the cosmic connection stabilizes.",
                 lucky_assets=self._generate_random_lucky_assets(),
-                time_lord_insight="Your Time Lord is gathering cosmic data.",
-                planetary_blame="Technical Mercury square Digital Saturn (Temporary)",
+                time_lord_insight=f"Your Time Lord {time_lord} is gathering cosmic data.",
+                planetary_blame=f"{time_lord} square Digital Saturn (Temporary)",
                 remedy="Take 5 deep breaths and try again.",
                 cusp_alert=None
             ),

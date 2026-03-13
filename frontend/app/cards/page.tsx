@@ -6,146 +6,58 @@ import {
 	type FC,
 	useCallback,
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { WalletBalance } from "@/components/balance";
 import { HoroscopeReveal } from "@/components/HoroscopeReveal";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { TradeConfirm } from "@/components/TradeConfirm";
 import { type TradeResult } from "@/components/TradeExecution";
 import { TradeResults } from "@/components/TradeResults";
 import { UserXDetails } from "@/components/TwitterDetails";
 import { TradeModal } from "@/components/trade-modal";
 import { WalletDropdown } from "@/components/wallet-dropdown";
-import { api } from "@/lib/api";
-import { FlashPrivyService } from "@/lib/flash-trade";
+import { api, ApiError } from "@/lib/api";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useStore } from "@/store/useStore";
 import { usePrivyWallet } from "../hooks/use-privy-wallet";
 
 type Screen =
 	| "loading"
-	| "payment"
 	| "reveal"
-	| "confirm"
 	| "execute"
 	| "results";
-
-// Helper functions
-function deriveDirection(vibeStatus: string): "LONG" | "SHORT" {
-	const positiveKeywords = [
-		"confident",
-		"optimistic",
-		"energetic",
-		"creative",
-		"happy",
-		"excited",
-		"bold",
-		"adventurous",
-		"passionate",
-		"lucky",
-	];
-	const vibe = vibeStatus.toLowerCase();
-	return positiveKeywords.some((kw) => vibe.includes(kw)) ? "LONG" : "SHORT";
-}
-
-function extractNumber(numStr: string): number {
-	const match = numStr.match(/\d+/);
-	return match ? parseInt(match[0], 10) : 42;
-}
 
 const CardsPage: FC = () => {
 	const {
 		publicKey,
 		connected,
-		sendTransaction,
 		isReady,
-		signTransaction,
-		signAllTransactions,
 	} = usePrivyWallet();
 	const { card, setCard, setWallet, setUser, loading, setLoading } = useStore();
 	const router = useRouter();
 
 	const [currentScreen, setCurrentScreen] = useState<Screen>("loading");
-	const [tradeAmount, setTradeAmount] = useState(10);
 	const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [verified, setVerified] = useState(false);
 	const [balance, setBalance] = useState<number | null>(null);
-	const [flashService, setFlashService] = useState<FlashPrivyService | null>(
-		null,
-	);
 
 	const wasConnected = useRef(false);
 	const hasCheckedRef = useRef(false);
+	// Track which publicKey we last ran the status check for so we detect
+	// wallet switches even when connected remains true.
+	const lastCheckedPublicKey = useRef<string | null>(null);
 
-	// Derived trade params from card
-	const tradeParams = useMemo(() => {
-		if (!card) return null;
-		const vibeStatus = card.front.vibe_status || "Confident";
-		const luckyNumber = extractNumber(card.back.lucky_assets.number);
-		return {
-			direction: deriveDirection(vibeStatus),
-			leverage: Math.min(Math.max(luckyNumber, 2), 50), // Cap leverage between 2x and 50x
-		};
-	}, [card]);
-
-	// Stabilize wallet functions to prevent re-initialization
-	const walletFuncsRef = useRef({
-		signTransaction,
-		signAllTransactions,
-		sendTransaction,
-	});
-	useEffect(() => {
-		walletFuncsRef.current = {
-			signTransaction,
-			signAllTransactions,
-			sendTransaction,
-		};
-	}, [signTransaction, signAllTransactions, sendTransaction]);
-
-	const walletAdapter = useMemo(() => {
-		if (!publicKey) return null;
-		return {
-			publicKey,
-			signTransaction: async (tx: any) =>
-				walletFuncsRef.current.signTransaction?.(tx),
-			signAllTransactions: async (txs: any) =>
-				walletFuncsRef.current.signAllTransactions?.(txs),
-			sendTransaction: async (tx: any) =>
-				walletFuncsRef.current.sendTransaction?.(tx),
-		};
-	}, [publicKey]);
-
-	// Initialize Flash service
-	useEffect(() => {
-		if (!walletAdapter) return;
-
-		const endpoint =
-			process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-			"https://solana-rpc.publicnode.com";
-		const connection = new Connection(endpoint, "confirmed");
-
-		const service = new FlashPrivyService({
-			connection,
-			wallet: walletAdapter,
-			env: "mainnet-beta",
-		});
-
-		service
-			.initialize()
-			.then(() => {
-				setFlashService(service);
-			})
-			.catch((err) => {
-				console.error("Flash service init error:", err);
-			});
-
-		return () => {
-			service.cleanup();
-		};
-	}, [walletAdapter]);
+	// Single stable Connection shared by Flash service init and balance poller.
+	// Created once per component mount; avoids opening multiple WebSocket
+	// connections to the same RPC endpoint.
+	const connectionRef = useRef<Connection>(
+		new Connection(
+			process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://solana-rpc.publicnode.com",
+			"confirmed",
+		),
+	);
 
 	// Redirect if disconnected
 	useEffect(() => {
@@ -165,8 +77,19 @@ const CardsPage: FC = () => {
 			setCurrentScreen("reveal");
 		} catch (genErr) {
 			console.error("Error generating horoscope:", genErr);
-			setError("Failed to generate horoscope. Please try again.");
-			// Stay on error screen
+			if (genErr instanceof ApiError) {
+				if (genErr.status === 429) {
+					setError("Too many requests. The cosmos need a moment — please try again shortly.");
+				} else if (genErr.status === 503 || genErr.status === 502) {
+					setError("The AI oracle is temporarily unreachable. Please try again in a minute.");
+				} else if (genErr.status >= 400 && genErr.status < 500) {
+					setError(genErr.message || "Something went wrong with your request. Please try again.");
+				} else {
+					setError("A server error occurred while reading the stars. Please try again.");
+				}
+			} else {
+				setError("Connection lost. Check your internet and try again.");
+			}
 		} finally {
 			setLoading(false);
 		}
@@ -180,8 +103,15 @@ const CardsPage: FC = () => {
 				return;
 			}
 
+			// Reset if the user switched to a different wallet while staying
+			// connected (Privy can change publicKey without toggling connected).
+			if (publicKey !== lastCheckedPublicKey.current) {
+				hasCheckedRef.current = false;
+			}
+
 			if (hasCheckedRef.current) return;
 			hasCheckedRef.current = true;
+			lastCheckedPublicKey.current = publicKey;
 
 			setWallet(publicKey);
 
@@ -235,12 +165,8 @@ const CardsPage: FC = () => {
 			}
 
 			try {
-				const endpoint =
-					process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-					"https://solana-rpc.publicnode.com";
-				const conn = new Connection(endpoint, "confirmed");
 				const pubKey = new PublicKey(publicKey);
-				const lamports = await conn.getBalance(pubKey);
+				const lamports = await connectionRef.current.getBalance(pubKey);
 				setBalance(lamports / LAMPORTS_PER_SOL);
 			} catch (err) {
 				console.error("Error fetching balance:", err);
@@ -256,14 +182,6 @@ const CardsPage: FC = () => {
 	const handleVerifyTrade = () => {
 		setCurrentScreen("execute");
 	};
-
-	// Handle trade execution
-	const handleExecuteTrade = (amount: number) => {
-		setTradeAmount(amount);
-		setCurrentScreen("execute");
-	};
-
-
 
 
 
@@ -339,23 +257,6 @@ const CardsPage: FC = () => {
 		);
 	}
 
-	// Should not reach here if loading/error covers it, but for safety in "payment" logic removal
-	if (currentScreen === "payment") {
-		// Fallback if somehow state gets here, just show retry
-		return (
-			<section className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0f] text-white px-4">
-				<div className="card-glass text-center max-w-md">
-					<button
-						onClick={generateFreeHoroscope}
-						className="btn-primary w-full"
-					>
-						Reveal Horoscope
-					</button>
-				</div>
-			</section>
-		);
-	}
-
 	// Screen 3: Horoscope Reveal
 	if (currentScreen === "reveal" && card) {
 		return (
@@ -370,26 +271,8 @@ const CardsPage: FC = () => {
 		);
 	}
 
-	// Screen 4: Trade Confirm
-	if (currentScreen === "confirm" && card) {
-		return (
-			<>
-				<UserXDetails />
-				<WalletBalance />
-				<div className="absolute top-0 md:top-6 right-5 md:right-6 z-50">
-					<WalletDropdown variant="desktop" />
-				</div>
-				<TradeConfirm
-					card={card}
-					onBack={() => setCurrentScreen("reveal")}
-					onExecute={handleExecuteTrade}
-				/>
-			</>
-		);
-	}
-
-	// Screen 5: Trade Execution
-	if (currentScreen === "execute" && card && tradeParams) {
+	// Screen 4: Trade Execution
+	if (currentScreen === "execute" && card) {
 		return (
 			<>
 				<UserXDetails />
@@ -410,7 +293,7 @@ const CardsPage: FC = () => {
 		);
 	}
 
-	// Screen 6: Trade Results
+	// Screen 5: Trade Results
 	if (currentScreen === "results" && card && tradeResult) {
 		return (
 			<>
@@ -437,4 +320,10 @@ const CardsPage: FC = () => {
 	);
 };
 
-export default CardsPage;
+const CardsPageWithBoundary: FC = () => (
+	<ErrorBoundary>
+		<CardsPage />
+	</ErrorBoundary>
+);
+
+export default CardsPageWithBoundary;

@@ -9,6 +9,7 @@ const requestLogger = (req, res, next) => {
 
     // Log request
     logger.info('Incoming request', {
+        requestId: req.requestId,
         method: req.method,
         path: req.path,
         ip: req.ip,
@@ -21,6 +22,7 @@ const requestLogger = (req, res, next) => {
         const duration = Date.now() - startTime;
 
         logger.info('Outgoing response', {
+            requestId: req.requestId,
             method: req.method,
             path: req.path,
             statusCode: res.statusCode,

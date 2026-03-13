@@ -25,6 +25,8 @@ class UserController {
         latitude,
         longitude,
         timezoneOffset,
+        privyUserId,
+        privyWalletId,
       } = req.body;
 
       // Register/update user
@@ -40,6 +42,8 @@ class UserController {
         latitude,
         longitude,
         timezoneOffset,
+        privyUserId,
+        privyWalletId,
       });
 
       // Generate JWT token for the user
@@ -61,6 +65,7 @@ class UserController {
             twitterId: user.twitter_id,
             twitterUsername: user.twitter_username,
             twitterProfileUrl: user.twitter_profile_url,
+            tradingDelegated: user.trading_delegated,
           },
           token,
         },
@@ -101,10 +106,10 @@ class UserController {
           timezoneOffset: user.timezone_offset,
           createdAt: user.created_at,
           username: user.username,
-          twitterAccessToken: user.twitter_access_token,
-          twitterRefreshToken: user.twitter_refresh_token,
-          twitterTokenExpiresAt: user.twitter_token_expires,
           tradeMadeAt: user.trade_made_at,
+          tradingDelegated: user.trading_delegated ?? false,
+          // OAuth tokens intentionally excluded — they grant write access to
+          // the user's Twitter account and must not be sent to clients.
         },
       });
     } catch (error) {
@@ -388,6 +393,40 @@ class UserController {
       );
     } catch (error) {
       logger.error("Add trade time controller error:", error);
+      next(error);
+    }
+  }
+
+  /**
+   * Enable or disable autonomous (server-side) trading for a user.
+   * Called by the frontend after the user approves/revokes Privy delegateWallet().
+   * @route PATCH /api/user/trading-delegated
+   */
+  async setTradingDelegated(req, res, next) {
+    try {
+      const { walletAddress, delegated, privyUserId, privyWalletId } = req.body;
+
+      if (!walletAddress || typeof delegated !== 'boolean') {
+        return errorResponse(res, 'walletAddress and delegated (boolean) are required', 400);
+      }
+
+      const existingUser = await userService.findUserByWallet(walletAddress);
+      if (!existingUser) {
+        return errorResponse(res, 'User not found', 404);
+      }
+
+      const updated = await userService.setTradingDelegated(walletAddress, delegated, { privyUserId, privyWalletId });
+
+      logger.info('Trading delegation status updated', { walletAddress, delegated });
+
+      return successResponse(res, {
+        trading_delegated: updated.trading_delegated,
+        message: delegated
+          ? 'Autonomous trading enabled. The agent can now execute trades on your behalf.'
+          : 'Autonomous trading disabled.',
+      });
+    } catch (error) {
+      logger.error('setTradingDelegated controller error:', error);
       next(error);
     }
   }

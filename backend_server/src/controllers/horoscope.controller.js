@@ -3,7 +3,9 @@ const horoscopeService = require('../services/horoscope.service');
 const aiService = require('../services/ai.service');
 const solanaService = require('../services/solana.service');
 const twitterService = require('../services/twitter.service');
+const webhookService = require('../services/webhook.service');
 const { successResponse, errorResponse } = require('../utils/response');
+const { getConfig } = require('../config/environment');
 const logger = require('../config/logger');
 
 /**
@@ -137,6 +139,14 @@ class HoroscopeController {
 
             logger.info('Horoscope card generated and saved', { walletAddress });
 
+            // Fire-and-forget: push horoscope_ready to any registered agent webhooks
+            webhookService.deliver(walletAddress, 'horoscope_ready', {
+                date:       horoscope.date,
+                luck_score: card.front?.luck_score ?? null,
+                direction:  (card.front?.luck_score ?? 50) > 50 ? 'LONG' : 'SHORT',
+                ticker:     card.back?.lucky_assets?.ticker ?? null,
+            }).catch(err => logger.warn('horoscope_ready webhook delivery error:', err.message));
+
             return successResponse(res, {
                 card: card,
                 date: horoscope.date
@@ -165,9 +175,9 @@ class HoroscopeController {
         try {
             const { walletAddress, txSig, pnlPercent } = req.body;
 
-            // Reject losing trades server-side
-            if (pnlPercent < 0) {
-                return errorResponse(res, 'Only profitable trades can verify a horoscope', 400);
+            // Reject break-even and losing trades server-side
+            if (pnlPercent <= 0) {
+                return errorResponse(res, 'Only profitable trades (pnlPercent > 0) can verify a horoscope', 400);
             }
 
             // Verify user exists
@@ -176,16 +186,34 @@ class HoroscopeController {
                 return errorResponse(res, 'User not found', 404);
             }
 
-            // Verify the transaction exists on-chain
-            const txValid = await solanaService.verifyTransaction(txSig);
-            if (!txValid) {
-                return errorResponse(res, 'Transaction not found on-chain', 400);
+            // Count the attempt before the on-chain check (intentional: failed
+            // attempts still consume quota to prevent brute-force replay).
+            await horoscopeService.incrementTradeAttempts(walletAddress);
+
+            // Verify the transaction exists on-chain.
+            // In development, txSigs prefixed with "TEST_" bypass the on-chain check
+            // so agents can test the full verify flow without a real transaction.
+            const { server } = getConfig();
+            const isTestSig = server.isDevelopment && txSig.startsWith('TEST_');
+            if (!isTestSig) {
+                const txValid = await solanaService.verifyTransaction(txSig);
+                if (!txValid) {
+                    return errorResponse(res, 'Transaction not found on-chain', 400);
+                }
             }
 
             // Mark today's horoscope as verified
             await horoscopeService.verifyHoroscope(walletAddress);
 
             logger.info('Horoscope verified via trade', { walletAddress, txSig });
+
+            // Fire-and-forget: push trade_verified to any registered agent webhooks
+            webhookService.deliver(walletAddress, 'trade_verified', {
+                verified:   true,
+                pnl_percent: pnlPercent,
+                tx_sig:     txSig,
+            }).catch(err => logger.warn('trade_verified webhook delivery error:', err.message));
+
             return successResponse(res, { verified: true });
         } catch (error) {
             logger.error('Verify controller error:', error);
@@ -200,12 +228,19 @@ class HoroscopeController {
     async getHistory(req, res, next) {
         try {
             const { walletAddress } = req.params;
-            const limit = parseInt(req.query.limit) || 10;
+            const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+            const afterDate = req.query.after_date || null;
 
-            const horoscopes = await horoscopeService.getUserHoroscopes(walletAddress, limit);
+            const horoscopes = await horoscopeService.getUserHoroscopes(walletAddress, limit, afterDate);
+
+            // next_cursor is the date of the last row — pass as after_date on the next request
+            const nextCursor = horoscopes.length === limit
+                ? horoscopes[horoscopes.length - 1].date
+                : null;
 
             return successResponse(res, {
                 count: horoscopes.length,
+                next_cursor: nextCursor,
                 horoscopes: horoscopes.map(h => ({
                     date: h.date,
                     horoscopeText: h.horoscope_text,

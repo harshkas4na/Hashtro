@@ -5,10 +5,13 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./src/config/swagger');
 const { getConfig, validateEnv } = require('./src/config/environment');
 const { testConnection } = require('./src/config/supabase');
 const logger = require('./src/config/logger');
 const requestLogger = require('./src/middleware/requestLogger');
+const correlationId = require('./src/middleware/correlationId');
 const { errorHandler, notFoundHandler } = require('./src/middleware/errorHandler');
 const routes = require('./src/routes');
 
@@ -34,6 +37,12 @@ try {
 const config = getConfig();
 
 /**
+ * Correlation ID — attach before any other middleware so every log line
+ * can include req.requestId to trace a request end-to-end.
+ */
+app.use(correlationId);
+
+/**
  * Security middleware
  */
 app.use(helmet()); // Security headers
@@ -48,12 +57,13 @@ const corsOptions = {
     'http://localhost:3001',
     'https://www.hashtro.fun',        // Add your production domain
     'https://hashtro.fun',             // Add without www too
-    'https://hastrology.vercel.app',   // If you have a Vercel frontend
+    'https://hastrology.vercel.app',
+    'https://staging.hashtro.fun',   // If you have a Vercel frontend
     // Add any other frontend domains you use
   ],
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 };
 app.use(cors(corsOptions));
@@ -82,6 +92,43 @@ app.get('/', (req, res) => {
     environment: config.server.nodeEnv
   });
 });
+
+/**
+ * Root-level health check for load balancers and uptime monitors.
+ * Checks database connectivity so the probe reflects real readiness.
+ */
+app.get('/health', async (req, res) => {
+  try {
+    const dbOk = await testConnection();
+    const status = dbOk ? 'ok' : 'degraded';
+    res.status(dbOk ? 200 : 503).json({
+      status,
+      db: dbOk ? 'connected' : 'unreachable',
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(503).json({
+      status: 'error',
+      db: 'unreachable',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * OpenAPI spec + Swagger UI
+ * Helmet's CSP is relaxed for the docs route so the browser can run the UI scripts.
+ */
+app.get('/api/openapi.json', (req, res) => res.json(swaggerSpec));
+app.use(
+  '/api/docs',
+  helmet({ contentSecurityPolicy: false }),
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'Hastrology API Docs',
+    swaggerOptions: { persistAuthorization: true },
+  })
+);
 
 /**
  * Mount API routes

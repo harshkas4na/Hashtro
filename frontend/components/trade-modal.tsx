@@ -55,7 +55,9 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 	const [pnlPercent, setPnlPercent] = useState(0);
 	const [currentPrice, setCurrentPrice] = useState(0);
 	const [entryPrice, setEntryPrice] = useState(0);
-	const leverage = parseInt(card.back.lucky_assets.number, 10) ?? 1;
+	// Use the asset-specific max_leverage cap from the card rather than the
+	// lucky number (a numerology value unrelated to trading leverage limits).
+	const leverage = Math.min(Number(card.back.lucky_assets.max_leverage ?? 2), 50);
 	const [statusMessage, setStatusMessage] = useState("Opening position...");
 	const [showEducation, setShowEducation] = useState(false);
 	const [tradeDetails, setTradeDetails] = useState<{
@@ -552,7 +554,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 				type: "close",
 				txSig: result.txSig,
 				direction: latestPosition.direction,
-				leverage: parseInt(card.back.lucky_assets.number, 10) ?? 1,
+				leverage: Math.min(Number(card.back.lucky_assets.max_leverage ?? 2), 50),
 				pnl: latestPosition.pnl,
 				size: latestPosition.size,
 				entryPrice: latestPosition.entryPrice,
@@ -581,8 +583,6 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 
 	const timerClass =
 		timeLeft <= 5 ? "critical" : timeLeft <= 10 ? "warning" : "";
-
-	const luckyNumber = extractNumber(card.back.lucky_assets.number);
 
 	return (
 		<>
@@ -771,7 +771,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 								<div className="text-base sm:text-xl text-white/60">
 									at{" "}
 									<span className="text-[#f5c842] font-semibold">
-										{luckyNumber}x
+										{leverage}x
 									</span>{" "}
 									leverage
 								</div>
@@ -829,7 +829,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 										}}
 									>
 										This opens a <strong>{direction.toLowerCase()}</strong>{" "}
-										position on SOL at <strong>{luckyNumber}x</strong> leverage
+										position on SOL at <strong>{leverage}x</strong> leverage
 										using <strong>{amount} SOL</strong>. It auto-closes in 30
 										seconds. You'll approve 2 transactions: open and pre-sign
 										auto-close.
@@ -849,7 +849,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 									<path d="M12 9v4M12 17h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 								</svg>
 								<p className="warning-text">
-									<strong>High leverage warning:</strong> {luckyNumber}x
+									<strong>High leverage warning:</strong> {leverage}x
 									leverage means small price movements result in amplified gains
 									or losses.
 								</p>

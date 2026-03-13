@@ -8,11 +8,16 @@ const userService = require('./user.service');
  * Uses OAuth 2.0 User Context (with user access tokens) to access user data.
  * Requires: TWITTER_CLIENT_ID and TWITTER_CLIENT_SECRET for token refresh.
  */
+// Cache TTL for enriched X context: 2 hours (Twitter bio/tweets change rarely)
+const X_CONTEXT_TTL_MS = 2 * 60 * 60 * 1000;
+
 class TwitterService {
     constructor() {
         this.apiBaseUrl = 'https://api.twitter.com/2';
         this.clientId = process.env.TWITTER_CLIENT_ID;
         this.clientSecret = process.env.TWITTER_CLIENT_SECRET;
+        // walletAddress → { data: xContext, expiresAt: number }
+        this._xContextCache = new Map();
     }
 
     /**
@@ -169,7 +174,9 @@ class TwitterService {
     }
 
     /**
-     * Get enriched X context for horoscope personalization
+     * Get enriched X context for horoscope personalization.
+     * Results are cached per wallet address for X_CONTEXT_TTL_MS to avoid
+     * two Twitter API calls on every horoscope generation.
      * @param {Object} user - User object from database
      * @returns {Promise<Object>} - X context object
      */
@@ -182,6 +189,14 @@ class TwitterService {
                 recentTweets: [],
                 persona: null
             };
+        }
+
+        // Return cached result if fresh
+        const cacheKey = user.wallet_address;
+        const cached = this._xContextCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+            logger.debug('X context cache hit', { handle: user.twitter_username });
+            return cached.data;
         }
 
         // Try to refresh token if needed
@@ -205,7 +220,7 @@ class TwitterService {
         // Infer persona from bio and tweets
         const persona = this.inferPersona(profile?.bio, tweets);
 
-        return {
+        const result = {
             available: true,
             handle: profile?.username || user.twitter_username,
             bio: profile?.bio || null,
@@ -213,6 +228,15 @@ class TwitterService {
             followers: profile?.followers || 0,
             persona: persona
         };
+
+        // Cache for X_CONTEXT_TTL_MS so subsequent generations in the same
+        // session skip the two Twitter API calls.
+        this._xContextCache.set(cacheKey, {
+            data: result,
+            expiresAt: Date.now() + X_CONTEXT_TTL_MS
+        });
+
+        return result;
     }
 
     /**

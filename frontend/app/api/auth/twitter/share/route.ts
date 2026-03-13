@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 			const expiresAt = new Date(tokenExpiresAt);
 
 			if (expiresAt.getTime() - now.getTime() < 5 * 60 * 1000) {
-				const refreshed = await refreshTwitterToken(refreshToken);
+				const refreshed = await refreshTwitterToken(refreshToken ?? "");
 
 				if (!refreshed) {
 					return NextResponse.json(

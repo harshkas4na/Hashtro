@@ -26,28 +26,36 @@ class UserService {
     latitude,
     longitude,
     timezoneOffset,
+    privyUserId,
+    privyWalletId,
   }) {
     try {
       logger.info("Registering user:", { walletAddress });
+
+      const upsertData = {
+        wallet_address: walletAddress,
+        updated_at: new Date().toISOString(),
+        username: username,
+        twitter_id: twitterId,
+        twitter_username: twitterUsername,
+        twitter_profile_url: twitterProfileUrl,
+        dob: dob,
+        birth_time: birthTime,
+        birth_place: birthPlace,
+        latitude: latitude,
+        longitude: longitude,
+        timezone_offset: timezoneOffset,
+      };
+
+      // Only set Privy IDs when provided (avoid overwriting with null on subsequent calls)
+      if (privyUserId)   upsertData.privy_user_id   = privyUserId;
+      if (privyWalletId) upsertData.privy_wallet_id = privyWalletId;
 
       // Use upsert to create or update user
       const { data, error } = await this.supabase
         .from("users")
         .upsert(
-          {
-            wallet_address: walletAddress,
-            updated_at: new Date().toISOString(),
-            username: username,
-            twitter_id: twitterId,
-            twitter_username: twitterUsername,
-            twitter_profile_url: twitterProfileUrl,
-            dob: dob,
-            birth_time: birthTime,
-            birth_place: birthPlace,
-            latitude: latitude,
-            longitude: longitude,
-            timezone_offset: timezoneOffset,
-          },
+          upsertData,
           {
             onConflict: "wallet_address",
             returning: "representation",
@@ -313,6 +321,8 @@ class UserService {
     try {
       logger.info("Updating trade time for user:", { walletAddress });
 
+      // Update the "last trade" shortcut on the users row (kept for fast
+      // "did the user trade today?" checks in HoroscopeReveal).
       const { data, error } = await this.supabase
         .from("users")
         .update({
@@ -328,6 +338,22 @@ class UserService {
         throw error;
       }
 
+      // Insert a permanent history record so we never lose past trades.
+      // The horoscope_date is today's UTC date (the day the horoscope was
+      // generated for). Non-fatal on failure — don't let a failed INSERT
+      // roll back the user-facing trade confirmation.
+      const todayUtc = new Date().toISOString().slice(0, 10);
+      const { error: tradeInsertError } = await this.supabase
+        .from("trades")
+        .insert({
+          wallet_address: walletAddress,
+          horoscope_date: todayUtc,
+          traded_at: tradeMadeAt.toISOString(),
+        });
+      if (tradeInsertError) {
+        logger.warn("Failed to insert trade history record (non-fatal):", tradeInsertError);
+      }
+
       logger.info("Trade time updated successfully:", {
         walletAddress,
         tradeMadeAt: tradeMadeAt.toISOString(),
@@ -335,6 +361,45 @@ class UserService {
       return data;
     } catch (error) {
       logger.error("Update trade time error:", error);
+      throw error;
+    }
+  }
+  /**
+   * Enable or disable autonomous trading for a user.
+   * Called by the frontend after the user approves/revokes Privy delegateWallet().
+   * @param {string} walletAddress
+   * @param {boolean} delegated
+   * @returns {Promise<Object>} Updated user
+   */
+  async setTradingDelegated(walletAddress, delegated, { privyUserId, privyWalletId } = {}) {
+    try {
+      const updateData = {
+        trading_delegated: delegated,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Persist Privy IDs when enabling — backfills users who registered before this field existed
+      if (delegated) {
+        if (privyUserId)   updateData.privy_user_id   = privyUserId;
+        if (privyWalletId) updateData.privy_wallet_id = privyWalletId;
+      }
+
+      const { data, error } = await this.supabase
+        .from("users")
+        .update(updateData)
+        .eq("wallet_address", walletAddress)
+        .select("wallet_address, trading_delegated")
+        .single();
+
+      if (error) {
+        logger.error("setTradingDelegated error:", error);
+        throw error;
+      }
+
+      logger.info("Trading delegated status updated:", { walletAddress, delegated });
+      return data;
+    } catch (error) {
+      logger.error("setTradingDelegated service error:", error);
       throw error;
     }
   }

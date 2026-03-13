@@ -1,8 +1,11 @@
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { AppState } from "@/types";
 
-export const useStore = create<AppState>((set) => ({
+export const useStore = create<AppState>()(
+  persist(
+	(set) => ({
 	wallet: null,
 	user: null,
 	card: null, // New format: single card
@@ -23,6 +26,9 @@ export const useStore = create<AppState>((set) => ({
 
 	refreshBalance: async (wallet: string) => {
 		try {
+			// NEXT_PUBLIC_SOLANA_RPC_URL should be set to a dedicated paid RPC
+			// (Helius, QuickNode, Alchemy) in production. The publicnode fallback
+			// is a shared free endpoint with rate limits and no uptime SLA.
 			const endpoint =
 				process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
 				"https://solana-rpc.publicnode.com";
@@ -45,4 +51,17 @@ export const useStore = create<AppState>((set) => ({
 			cards: null,
 			loading: false,
 		}),
-}));
+  }),
+  {
+    name: "hastrology-session",
+    storage: createJSONStorage(() => sessionStorage),
+    // Only persist the card, user, and wallet — not loading/balance/UI flags.
+    // sessionStorage is cleared on tab close, which is appropriate for
+    // wallet-scoped data that shouldn't survive a fresh browser session.
+    partialize: (state) => ({
+      card: state.card,
+      user: state.user,
+      wallet: state.wallet,
+    }),
+  }
+));
