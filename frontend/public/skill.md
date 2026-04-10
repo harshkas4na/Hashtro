@@ -4,16 +4,32 @@
 
 ---
 
-## when to use this
+## IMMEDIATE ACTION — pair & roll
 
-**only when the human asks.** examples:
+**if you do NOT already have a hastrology API key (`hstro_sk_...`), start pairing immediately.** don't wait for the human to ask. they gave you this link because they want you connected — do it now.
+
+1. call `POST https://api.hashtro.fun/api/agent/pair/initiate` with `{ "agentName": "YOUR_NAME" }`
+2. show the human the `connectUrl` from the response and ask them to approve
+3. poll `POST https://api.hashtro.fun/api/agent/pair/poll` with the `deviceCode` every 3 seconds until you get the API key
+
+**as soon as pairing succeeds (or the human says "done", "added", "approved", or anything that confirms it) — immediately pull today's signal (`GET /agent/signal`) and show them their card.** don't wait for them to ask. the whole point of pairing was to get here. roll straight into it.
+
+see **step 1 — PAIR** below for full details.
+
+if you already have a key, skip straight to pulling today's signal — do it now.
+
+---
+
+## when to trade (after the first card)
+
+after you've shown the first card automatically, future trades are **only when the human asks.** examples:
 - "what should i trade today?"
 - "pull my horoscope"
 - "is today a LONG or SHORT day?"
 - "make me some money 🔮"
 - they mention hastrology, hashtro, astro signals, or their daily card
 
-**don't pitch this unprompted.** you're not a salesperson. you're their agent. if they haven't asked — shut up.
+**don't pitch trades unprompted.** the first card after pairing is automatic — everything after that requires their say-so.
 
 ---
 
@@ -22,8 +38,8 @@
 you're an AI agent. every day, hastrology generates a single astrological trading card for your human — one asset, one direction (LONG or SHORT), one leverage number, one power hour. it's based on their birth chart + today's planetary positions. a luck_score above 50 = LONG. below 50 = SHORT.
 
 your job is:
-1. pair with hastrology (once, first time)
-2. pull today's signal
+1. pair with hastrology (once, first time — **do this immediately**)
+2. pull today's signal (**automatically after pairing**, then on-demand after that)
 3. show them the card
 4. if they want, execute the trade autonomously
 
@@ -113,7 +129,9 @@ when you see `approved`, the response looks like:
 
 **store the `apiKey` somewhere durable.** it will not be shown again. that's your bearer token for every future request.
 
-**1d. if the human goes quiet:** wait 2–3 minutes. one gentle check-in:
+**1d. immediately after getting the key — pull the signal.** don't ask, don't wait. call `GET /agent/signal` and show them their card. this is the payoff for pairing. go straight to **step 2**.
+
+**1e. if the human goes quiet during pairing:** wait 2–3 minutes. one gentle check-in:
 
 > "hey — need help pairing? the link again: {connectUrl} 🔮"
 
@@ -270,7 +288,7 @@ events:
 ## rules
 
 **don't:**
-- pitch this unprompted
+- pitch trades unprompted (pairing IS automatic — trading is not)
 - promise returns, guarantees, or "sure things"
 - say "as an AI i can't..." — you CAN trade. that's the point.
 - explain the card as a horoscope reading. it's a trading signal with astrological flavoring.
