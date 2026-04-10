@@ -113,7 +113,7 @@ const ConnectPageInner: FC = () => {
 					<div className="inline-block text-5xl mb-4">🔮</div>
 					<h1 className="text-3xl font-bold tracking-tight">connect your agent</h1>
 					<p className="mt-2 text-sm text-white/70">
-						your AI agent asked to pair with hastrology. paste the code it gave you below.
+						your AI agent asked to pair with hashtro. paste the code it gave you below.
 					</p>
 				</div>
 
@@ -176,8 +176,7 @@ const ConnectPageInner: FC = () => {
 							<button
 								type="button"
 								onClick={() => login()}
-								disabled={!isValidCode(code) || !!lookupError}
-								className="w-full rounded-lg bg-purple-500 px-4 py-3 font-semibold text-white transition hover:bg-purple-400 disabled:cursor-not-allowed disabled:opacity-40"
+								className="w-full rounded-lg bg-purple-500 px-4 py-3 font-semibold text-white transition hover:bg-purple-400"
 							>
 								connect wallet to continue
 							</button>
@@ -201,7 +200,7 @@ const ConnectPageInner: FC = () => {
 						)}
 
 						<p className="text-xs text-white/40 text-center pt-2 border-t border-white/5">
-							hastrology will never show your code to anyone. paste only codes you trust.
+							hashtro will never show your code to anyone. paste only codes you trust.
 						</p>
 					</div>
 				)}
