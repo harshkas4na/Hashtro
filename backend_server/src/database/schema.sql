@@ -350,3 +350,49 @@ BEGIN
       USING (true) WITH CHECK (true);
   END IF;
 END $$;
+
+-- Migration: Agent Pairing Codes (OAuth 2.0 Device Authorization Grant flavour).
+-- Replaces the old flow of "user manually creates an API key in the dashboard
+-- and pastes it into the agent". Now the AGENT initiates pairing and gets a
+-- short userCode which the user pastes at /connect to approve. On approval,
+-- the backend mints a real api key bound to the user's wallet and returns it
+-- exactly once to the agent on its next poll.
+--
+--   device_code_hash : SHA-256 of the long secret the agent polls with
+--   user_code        : short human-pasteable code shown to the user (plain, unique)
+--   status           : pending → approved → consumed   (or expired)
+--   wallet_address   : set on approval (the user who pasted the code)
+--   api_key_id       : set on consumption (the key we minted for this pairing)
+CREATE TABLE IF NOT EXISTS agent_pairing_codes (
+  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  device_code_hash  TEXT UNIQUE NOT NULL,
+  user_code         TEXT UNIQUE NOT NULL,
+  agent_name        TEXT,
+  status            TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','approved','consumed','expired')),
+  wallet_address    TEXT REFERENCES users(wallet_address) ON DELETE CASCADE,
+  api_key_id        UUID REFERENCES agent_api_keys(id) ON DELETE SET NULL,
+  created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  approved_at       TIMESTAMP WITH TIME ZONE,
+  consumed_at       TIMESTAMP WITH TIME ZONE,
+  expires_at        TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pairing_user_code ON agent_pairing_codes(user_code);
+CREATE INDEX IF NOT EXISTS idx_pairing_device_hash ON agent_pairing_codes(device_code_hash);
+CREATE INDEX IF NOT EXISTS idx_pairing_status ON agent_pairing_codes(status) WHERE status = 'pending';
+
+ALTER TABLE agent_pairing_codes ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'agent_pairing_codes'
+      AND policyname = 'Service role has full access to agent_pairing_codes'
+  ) THEN
+    CREATE POLICY "Service role has full access to agent_pairing_codes"
+      ON agent_pairing_codes FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+  END IF;
+END $$;

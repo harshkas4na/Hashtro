@@ -5,6 +5,8 @@ const aiService = require('../services/ai.service');
 const twitterService = require('../services/twitter.service');
 const webhookService = require('../services/webhook.service');
 const privyService = require('../services/privy.service');
+const pairingService = require('../services/pairing.service');
+const imageSign = require('../services/imageSign.service');
 const { buildOpenPositionTx, buildClosePositionTx, getTokenPrice } = require('../services/flash-trade.service');
 const { getConfig } = require('../config/environment');
 const { successResponse, errorResponse } = require('../utils/response');
@@ -223,12 +225,25 @@ async function autoCloseAndVerify({ walletAddress, side, symbol, entryPrice, lev
     }
 
     // ── Step 6: fire webhook ──────────────────────────────────────────────────
+    const { frontend } = getConfig();
+    const tradeImageUrl = imageSign.tradeImageUrl({
+        frontendUrl: frontend.url,
+        direction: side === 'long' ? 'LONG' : 'SHORT',
+        ticker: symbol,
+        leverage,
+        entry: entryPrice,
+        exit: closeExitPrice,
+        pnl: pnlPercent,
+        status: verified ? 'verified' : 'closed',
+    });
+
     webhookService.deliver(walletAddress, 'trade_verified', {
         closeTxSig,
         entryPrice,
         exitPrice: closeExitPrice,
         pnlPercent,
         verified,
+        trade_image_url: tradeImageUrl,
     }).catch(() => {});
 }
 
@@ -341,6 +356,11 @@ class AgentController {
             logger.info('Agent signal served', { walletAddress, direction: signal.direction, luckScore: signal.luck_score });
 
             const { frontend } = getConfig();
+            const cardImageUrl = imageSign.cardImageUrl({
+                frontendUrl: frontend.url,
+                walletAddress,
+                date: horoscope.date,
+            });
             return successResponse(res, {
                 wallet_address:             walletAddress,
                 date:                       horoscope.date,
@@ -348,6 +368,7 @@ class AgentController {
                 autonomous_trading_enabled: user.trading_delegated ?? false,
                 last_trade_attempt_at:      horoscope.last_trade_attempt_at ?? null,
                 trade_url:                  `${frontend.url}/cards`,
+                card_image_url:             cardImageUrl,
                 ...signal,
             });
         } catch (error) {
@@ -621,6 +642,15 @@ class AgentController {
             }).catch((err) => logger.error('autoCloseAndVerify unhandled error', { error: err?.message }));
 
             const explorerBase = 'https://solscan.io/tx';
+            const { frontend } = getConfig();
+            const positionImageUrl = imageSign.tradeImageUrl({
+                frontendUrl: frontend.url,
+                direction: signal.direction,
+                ticker:    symbol,
+                leverage,
+                entry:     buildResult.estimatedPrice,
+                status:    'open',
+            });
 
             return successResponse(res, {
                 executed:             true,
@@ -633,10 +663,130 @@ class AgentController {
                 trade_attempts_today: attemptResult.trade_attempts,
                 can_retry:            attemptResult.trade_attempts < AGENT_MAX_RETRIES,
                 explorer_url:         `${explorerBase}/${txSig}`,
+                position_image_url:   positionImageUrl,
                 auto_close_in:        '30s',
             });
         } catch (error) {
             logger.error('executeTrade controller error:', error);
+            next(error);
+        }
+    }
+
+    /**
+     * Step 1 of agent pairing — agent initiates, gets a deviceCode + userCode.
+     * Unauthenticated; rate-limited by IP.
+     * @route POST /api/agent/pair/initiate
+     */
+    async pairInitiate(req, res, next) {
+        try {
+            const { agentName } = req.body;
+            const result = await pairingService.initiate({ agentName });
+            const { frontend } = getConfig();
+            return successResponse(res, {
+                deviceCode:   result.deviceCode,
+                userCode:     result.userCode,
+                connectUrl:   `${frontend.url}/connect?code=${encodeURIComponent(result.userCode)}`,
+                pollUrl:      '/api/agent/pair/poll',
+                expiresAt:    result.expiresAt,
+                expiresIn:    result.expiresIn,
+                pollInterval: result.pollInterval,
+                message:      'Show the userCode (or connectUrl) to your user. Poll pollUrl with deviceCode until status becomes "approved".',
+            }, 201);
+        } catch (error) {
+            logger.error('pairInitiate controller error:', error);
+            next(error);
+        }
+    }
+
+    /**
+     * Step 2 of agent pairing — agent polls with the deviceCode.
+     * When the user approves, the response carries the raw api key exactly ONCE.
+     * @route POST /api/agent/pair/poll
+     */
+    async pairPoll(req, res, next) {
+        try {
+            const { deviceCode } = req.body;
+            const result = await pairingService.poll({ deviceCode });
+
+            if (result.status === 'invalid') {
+                return errorResponse(res, 'Invalid or unknown deviceCode', 404);
+            }
+            if (result.status === 'expired') {
+                return errorResponse(res, 'Pairing code expired. Call /pair/initiate again.', 410);
+            }
+            if (result.status === 'consumed') {
+                return errorResponse(res, 'This pairing was already claimed. Call /pair/initiate for a new code.', 409);
+            }
+            if (result.status === 'pending') {
+                return successResponse(res, { status: 'pending' });
+            }
+            // approved + key minted
+            return successResponse(res, {
+                status:         'approved',
+                apiKey:         result.apiKey,
+                keyPrefix:      result.keyPrefix,
+                walletAddress:  result.walletAddress,
+                message:        'Save this apiKey now. It will not be shown again.',
+            });
+        } catch (error) {
+            logger.error('pairPoll controller error:', error);
+            next(error);
+        }
+    }
+
+    /**
+     * Step 3 of agent pairing — user approves from /connect.
+     * Binds the userCode to the wallet; flips status to 'approved'.
+     * The api key is minted on the agent's NEXT poll — not returned here.
+     * @route POST /api/agent/pair/claim
+     */
+    async pairClaim(req, res, next) {
+        try {
+            const { userCode, walletAddress } = req.body;
+
+            // Ensure the wallet is actually registered before we pair it to anything.
+            const user = await userService.findUserByWallet(walletAddress);
+            if (!user) {
+                return errorResponse(res, 'Wallet not registered. Please sign up at hashtro.fun first.', 404);
+            }
+
+            const result = await pairingService.claim({ userCode, walletAddress });
+
+            if (!result.ok) {
+                const statusMap = {
+                    invalid_code:    400,
+                    not_found:       404,
+                    expired:         410,
+                    already_claimed: 409,
+                };
+                return errorResponse(res, result.message, statusMap[result.reason] || 400);
+            }
+
+            return successResponse(res, {
+                approved:   true,
+                agentName:  result.agentName,
+                message:    `${result.agentName} is now paired with your wallet. You can close this tab.`,
+            });
+        } catch (error) {
+            logger.error('pairClaim controller error:', error);
+            next(error);
+        }
+    }
+
+    /**
+     * Read-only lookup of a pairing code so /connect can display "Agent X wants to pair".
+     * @route GET /api/agent/pair/lookup/:userCode
+     */
+    async pairLookup(req, res, next) {
+        try {
+            const { userCode } = req.params;
+            const result = await pairingService.lookup({ userCode });
+            if (!result) {
+                return errorResponse(res, 'Code not found', 404);
+            }
+            return successResponse(res, result);
+        } catch (error) {
+            logger.error('pairLookup controller error:', error);
             next(error);
         }
     }

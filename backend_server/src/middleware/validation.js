@@ -295,6 +295,45 @@ const tradeAttemptSchema = Joi.object({
 }).options({ stripUnknown: true });
 
 /**
+ * Agent pairing — initiate
+ */
+const pairInitiateSchema = Joi.object({
+  agentName: Joi.string().min(1).max(50).default("Agent").messages({
+    "string.min": "agentName must be at least 1 character",
+    "string.max": "agentName must be at most 50 characters",
+  }),
+}).options({ stripUnknown: true });
+
+/**
+ * Agent pairing — poll
+ */
+const pairPollSchema = Joi.object({
+  deviceCode: Joi.string().required().min(10).max(200).messages({
+    "string.empty": "deviceCode is required",
+    "any.required": "deviceCode is required",
+  }),
+}).options({ stripUnknown: true });
+
+/**
+ * Agent pairing — claim (user approves from /connect)
+ */
+const pairClaimSchema = Joi.object({
+  userCode: Joi.string().required().min(5).max(40).messages({
+    "string.empty": "userCode is required",
+    "any.required": "userCode is required",
+  }),
+  walletAddress: Joi.string()
+    .required()
+    .min(32)
+    .max(44)
+    .pattern(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/)
+    .messages({
+      "string.pattern.base": "Invalid Solana wallet address format",
+      "any.required": "Wallet address is required",
+    }),
+}).options({ stripUnknown: true });
+
+/**
  * Agent key revocation validation schema
  */
 const revokeKeySchema = Joi.object({
@@ -357,5 +396,8 @@ module.exports = {
   validateGenerateKey: validate(generateKeySchema),
   validateRevokeKey: validate(revokeKeySchema),
   validateTradeAttempt: validate(tradeAttemptSchema),
+  validatePairInitiate: validate(pairInitiateSchema),
+  validatePairPoll: validate(pairPollSchema),
+  validatePairClaim: validate(pairClaimSchema),
   validateWebhookRegistration: validate(webhookRegistrationSchema),
 };

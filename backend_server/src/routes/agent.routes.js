@@ -1,10 +1,125 @@
 const express = require('express');
 const agentController = require('../controllers/agent.controller');
 const agentAuth = require('../middleware/agentAuth.middleware');
-const { validateGenerateKey, validateRevokeKey, validateWalletParam, validateTradeAttempt, validateWebhookRegistration } = require('../middleware/validation');
+const {
+    validateGenerateKey,
+    validateRevokeKey,
+    validateWalletParam,
+    validateTradeAttempt,
+    validateWebhookRegistration,
+    validatePairInitiate,
+    validatePairPoll,
+    validatePairClaim,
+} = require('../middleware/validation');
 const { authLimiter, generalLimiter, agentSignalLimiter, agentWebhookLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
+
+// ─── Pairing flow (OAuth 2.0 Device Authorization Grant) ────────────────────
+// Unauthenticated. The agent calls /pair/initiate → tells the user to visit
+// /connect?code=XXXX → polls /pair/poll until the user approves → receives
+// a freshly-minted API key exactly once.
+
+/**
+ * @swagger
+ * /agent/pair/initiate:
+ *   post:
+ *     summary: Start an agent pairing session
+ *     tags: [Agent]
+ *     description: Returns a short userCode for the human to paste at /connect and a deviceCode the agent polls with.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               agentName: { type: string, example: "My Agent" }
+ *     responses:
+ *       201: { description: Pairing session created }
+ */
+router.post(
+    '/pair/initiate',
+    authLimiter,
+    validatePairInitiate,
+    agentController.pairInitiate,
+);
+
+/**
+ * @swagger
+ * /agent/pair/poll:
+ *   post:
+ *     summary: Poll a pairing session for status / api key
+ *     tags: [Agent]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [deviceCode]
+ *             properties:
+ *               deviceCode: { type: string }
+ *     responses:
+ *       200: { description: Pending or approved (with apiKey) }
+ *       409: { description: Already consumed }
+ *       410: { description: Expired }
+ */
+router.post(
+    '/pair/poll',
+    generalLimiter,
+    validatePairPoll,
+    agentController.pairPoll,
+);
+
+/**
+ * @swagger
+ * /agent/pair/claim:
+ *   post:
+ *     summary: Approve a pairing session from the /connect page
+ *     description: Called by the frontend after the user authenticates with their Privy wallet and pastes the userCode. Does NOT return the api key — the agent receives it on its next poll.
+ *     tags: [Agent]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userCode, walletAddress]
+ *             properties:
+ *               userCode: { type: string, example: "HSTRO-A1B2-C3D4" }
+ *               walletAddress: { type: string }
+ *     responses:
+ *       200: { description: Pairing approved }
+ *       404: { description: Code not found or wallet not registered }
+ */
+router.post(
+    '/pair/claim',
+    authLimiter,
+    validatePairClaim,
+    agentController.pairClaim,
+);
+
+/**
+ * @swagger
+ * /agent/pair/lookup/{userCode}:
+ *   get:
+ *     summary: Look up pairing metadata (agent name, status) without approving
+ *     tags: [Agent]
+ *     parameters:
+ *       - in: path
+ *         name: userCode
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Metadata }
+ *       404: { description: Not found }
+ */
+router.get(
+    '/pair/lookup/:userCode',
+    generalLimiter,
+    agentController.pairLookup,
+);
 
 // ─── Signal ───────────────────────────────────────────────────────────────────
 

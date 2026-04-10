@@ -1,0 +1,229 @@
+import { ImageResponse } from "next/og";
+import { NextRequest } from "next/server";
+import crypto from "crypto";
+
+export const runtime = "nodejs";
+
+function getSecret(): string {
+	return process.env.IMAGE_SIGN_SECRET || process.env.JWT_SECRET || "dev-secret";
+}
+
+function sign(payload: string): string {
+	return crypto.createHmac("sha256", getSecret()).update(payload).digest("hex").slice(0, 32);
+}
+
+function verify(payload: string, sig: string | null): boolean {
+	if (!sig) return false;
+	const expected = sign(payload);
+	const a = Buffer.from(expected);
+	const b = Buffer.from(sig);
+	if (a.length !== b.length) return false;
+	return crypto.timingSafeEqual(a, b);
+}
+
+function formatNumber(n: number, digits = 2): string {
+	if (!isFinite(n)) return "—";
+	return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
+
+export async function GET(req: NextRequest) {
+	const url = new URL(req.url);
+	const dir = (url.searchParams.get("dir") || "LONG").toUpperCase();
+	const ticker = url.searchParams.get("ticker") || "—";
+	const lev = url.searchParams.get("lev") || "0";
+	const entry = url.searchParams.get("entry") || "0";
+	const exit = url.searchParams.get("exit");
+	const pnl = url.searchParams.get("pnl");
+	const status = url.searchParams.get("status") || "open";
+	const s = url.searchParams.get("s");
+
+	const payload = [
+		"trade",
+		dir,
+		ticker,
+		lev,
+		entry,
+		exit ?? "",
+		pnl ?? "",
+		status,
+	].join(":");
+
+	if (!verify(payload, s)) {
+		return new Response("Invalid signature", { status: 403 });
+	}
+
+	const entryNum = Number(entry);
+	const exitNum = exit !== null ? Number(exit) : null;
+	const pnlNum = pnl !== null ? Number(pnl) : null;
+	const isLong = dir === "LONG";
+	const isClosed = status === "closed" || pnlNum !== null;
+	const isWin = pnlNum !== null && pnlNum > 0;
+
+	const dirColor = isLong ? "#4ade80" : "#f87171";
+	const resultColor = isClosed ? (isWin ? "#4ade80" : "#f87171") : "#a78bfa";
+	const resultLabel = isClosed ? (isWin ? "WIN" : "LOSS") : "OPEN";
+
+	return new ImageResponse(
+		(
+			<div
+				style={{
+					width: "1200px",
+					height: "630px",
+					display: "flex",
+					flexDirection: "column",
+					background: `linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a0a1a 100%)`,
+					color: "white",
+					fontFamily: "system-ui, sans-serif",
+					padding: "48px",
+					position: "relative",
+				}}
+			>
+				<div
+					style={{
+						position: "absolute",
+						top: 0,
+						left: 0,
+						right: 0,
+						height: "8px",
+						background: `linear-gradient(90deg, ${dirColor} 0%, ${resultColor} 100%)`,
+						display: "flex",
+					}}
+				/>
+
+				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+					<div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+						<div style={{ fontSize: "48px", display: "flex" }}>🔮</div>
+						<div style={{ display: "flex", flexDirection: "column" }}>
+							<div style={{ fontSize: "14px", letterSpacing: "4px", color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>
+								hastrology · trade
+							</div>
+							<div style={{ fontSize: "18px", color: "rgba(255,255,255,0.7)" }}>
+								agent-executed position
+							</div>
+						</div>
+					</div>
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							padding: "8px 20px",
+							borderRadius: "9999px",
+							background: `${resultColor}20`,
+							border: `1px solid ${resultColor}66`,
+							color: resultColor,
+							fontSize: "18px",
+							fontWeight: 700,
+							letterSpacing: "2px",
+						}}
+					>
+						{resultLabel}
+					</div>
+				</div>
+
+				<div style={{ display: "flex", flexDirection: "column", marginTop: "48px", flex: 1 }}>
+					<div
+						style={{
+							fontSize: "20px",
+							letterSpacing: "3px",
+							color: dirColor,
+							textTransform: "uppercase",
+							display: "flex",
+						}}
+					>
+						{dir} · {lev}x
+					</div>
+					<div style={{ fontSize: "96px", fontWeight: 800, lineHeight: 1, marginTop: "8px", display: "flex" }}>
+						{ticker}
+					</div>
+
+					{isClosed && pnlNum !== null && (
+						<div
+							style={{
+								fontSize: "72px",
+								fontWeight: 800,
+								color: resultColor,
+								marginTop: "24px",
+								display: "flex",
+							}}
+						>
+							{pnlNum > 0 ? "+" : ""}
+							{formatNumber(pnlNum)}%
+						</div>
+					)}
+				</div>
+
+				<div
+					style={{
+						display: "flex",
+						gap: "16px",
+						marginTop: "24px",
+					}}
+				>
+					<div
+						style={{
+							display: "flex",
+							flexDirection: "column",
+							padding: "20px 24px",
+							borderRadius: "16px",
+							background: "rgba(255,255,255,0.05)",
+							border: "1px solid rgba(255,255,255,0.1)",
+							flex: 1,
+						}}
+					>
+						<div style={{ fontSize: "12px", letterSpacing: "2px", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", display: "flex" }}>
+							entry
+						</div>
+						<div style={{ fontSize: "36px", fontWeight: 700, color: "white", display: "flex", marginTop: "4px" }}>
+							${formatNumber(entryNum, entryNum < 10 ? 4 : 2)}
+						</div>
+					</div>
+					<div
+						style={{
+							display: "flex",
+							flexDirection: "column",
+							padding: "20px 24px",
+							borderRadius: "16px",
+							background: "rgba(255,255,255,0.05)",
+							border: "1px solid rgba(255,255,255,0.1)",
+							flex: 1,
+						}}
+					>
+						<div style={{ fontSize: "12px", letterSpacing: "2px", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", display: "flex" }}>
+							{isClosed ? "exit" : "status"}
+						</div>
+						<div style={{ fontSize: "36px", fontWeight: 700, color: "white", display: "flex", marginTop: "4px" }}>
+							{isClosed && exitNum !== null
+								? `$${formatNumber(exitNum, exitNum < 10 ? 4 : 2)}`
+								: "live"}
+						</div>
+					</div>
+					<div
+						style={{
+							display: "flex",
+							flexDirection: "column",
+							padding: "20px 24px",
+							borderRadius: "16px",
+							background: "rgba(255,255,255,0.05)",
+							border: "1px solid rgba(255,255,255,0.1)",
+							flex: 1,
+						}}
+					>
+						<div style={{ fontSize: "12px", letterSpacing: "2px", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", display: "flex" }}>
+							leverage
+						</div>
+						<div style={{ fontSize: "36px", fontWeight: 700, color: dirColor, display: "flex", marginTop: "4px" }}>
+							{lev}x
+						</div>
+					</div>
+				</div>
+			</div>
+		),
+		{
+			width: 1200,
+			height: 630,
+			headers: {
+				"Cache-Control": isClosed ? "public, max-age=3600" : "public, max-age=30",
+			},
+		},
+	);
+}

@@ -52,6 +52,11 @@ const envSchema = Joi.object({
         .description('Solana RPC endpoint used for building and confirming transactions'),
     SOLANA_NETWORK: Joi.string().valid('mainnet-beta', 'devnet').default('mainnet-beta')
         .description('Solana network (mainnet-beta or devnet)'),
+
+    // Image signing — shared with the Next.js frontend so it can verify signed
+    // card/trade image URLs. If omitted, we fall back to JWT_SECRET.
+    IMAGE_SIGN_SECRET: Joi.string().min(16).optional()
+        .description('HMAC secret for signing public card/trade image URLs'),
 }).unknown(true); // Allow other env vars
 
 /**

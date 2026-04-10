@@ -225,4 +225,13 @@ router.get(
     horoscopeController.getHistory
 );
 
+// Signed-URL endpoint used by the Next.js og image route to fetch a card.
+// Not documented in Swagger because it's an internal plumbing endpoint —
+// callers must provide a valid HMAC signature (see imageSign.service.js).
+router.get(
+    '/public/card',
+    generalLimiter,
+    horoscopeController.getPublicCard
+);
+
 module.exports = router;

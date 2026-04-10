@@ -4,6 +4,7 @@ const aiService = require('../services/ai.service');
 const solanaService = require('../services/solana.service');
 const twitterService = require('../services/twitter.service');
 const webhookService = require('../services/webhook.service');
+const imageSign = require('../services/imageSign.service');
 const { successResponse, errorResponse } = require('../utils/response');
 const { getConfig } = require('../config/environment');
 const logger = require('../config/logger');
@@ -250,6 +251,49 @@ class HoroscopeController {
             });
         } catch (error) {
             logger.error('Get history controller error:', error);
+            next(error);
+        }
+    }
+
+    /**
+     * Public, signed-URL endpoint used by the Next.js /api/og/card route to
+     * render today's card image. Requires an HMAC signature over "card:{wallet}:{date}"
+     * that only the backend (and its co-located frontend) can produce.
+     * @route GET /api/horoscope/public/card
+     */
+    async getPublicCard(req, res, next) {
+        try {
+            const { w: walletAddress, d: date, s: sig } = req.query;
+
+            if (!walletAddress || !date || !sig) {
+                return errorResponse(res, 'Missing w, d, or s', 400);
+            }
+            if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
+                return errorResponse(res, 'Invalid wallet address', 400);
+            }
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                return errorResponse(res, 'Invalid date', 400);
+            }
+
+            const payload = `card:${walletAddress}:${date}`;
+            if (!imageSign.verify(payload, sig)) {
+                return errorResponse(res, 'Invalid signature', 403);
+            }
+
+            const horoscope = await horoscopeService.getHoroscope(walletAddress, date);
+            if (!horoscope || !horoscope.cards) {
+                return errorResponse(res, 'Card not found', 404);
+            }
+
+            res.setHeader('Cache-Control', 'public, max-age=300');
+            return successResponse(res, {
+                walletAddress,
+                date,
+                card: horoscope.cards,
+                verified: horoscope.verified || false,
+            });
+        } catch (error) {
+            logger.error('getPublicCard controller error:', error);
             next(error);
         }
     }

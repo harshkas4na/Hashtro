@@ -362,4 +362,28 @@ export const api = {
 		if (!res.ok) await throwApiError(res, "Test delivery failed");
 		return res.json();
 	},
+
+	// ─── Agent Pairing (device-grant flow) ───────────────────────────────────
+	/** Read-only lookup of a pairing code — shows the agent name + status before approval. */
+	async lookupPairing(
+		userCode: string,
+	): Promise<{ agentName: string; status: string; expiresAt: string }> {
+		const res = await fetch(`${API_BASE}/agent/pair/lookup/${encodeURIComponent(userCode)}`);
+		if (!res.ok) await throwApiError(res, "Could not find pairing code");
+		return res.json();
+	},
+
+	/** Approve a pairing code on behalf of the authenticated wallet. */
+	async claimPairing(
+		walletAddress: string,
+		userCode: string,
+	): Promise<{ approved: boolean; agentName: string; message: string }> {
+		const res = await fetch(`${API_BASE}/agent/pair/claim`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ walletAddress, userCode }),
+		});
+		if (!res.ok) await throwApiError(res, "Could not approve pairing");
+		return res.json();
+	},
 };
