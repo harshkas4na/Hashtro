@@ -11,7 +11,6 @@ import { ApiKey, Webhook, WebhookEvent } from "@/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.hashtro.fun/api";
 const FRONTEND_URL = process.env.NEXT_PUBLIC_APP_URL || "https://hashtro.fun";
 
 const ALL_EVENTS: {
@@ -51,36 +50,6 @@ function formatRelative(iso: string | null): string {
 	const hours = Math.floor(minutes / 60);
 	if (hours < 24) return `${hours}h ago`;
 	return `${Math.floor(hours / 24)}d ago`;
-}
-
-function buildSystemPrompt(apiKey: string): string {
-	return `You are a trading assistant connected to Hastrology, an astrological trading signal app on Solana.
-
-API base: ${API_BASE}
-Authorization: Bearer ${apiKey || "YOUR_API_KEY"}
-
-Every morning (or when asked), call GET /api/agent/signal to get today's trading signal. The response tells you:
-- should_trade: whether to trade today
-- direction: LONG or SHORT (luck_score >50 = LONG, ≤50 = SHORT)
-- ticker: which asset to trade — always one of: SOL, BTC, ETH, BNB, ZEC (derived from luck_score)
-- luck_score: 0–100
-- leverage_suggestion: recommended leverage (capped by has_warning and asset max)
-- power_hour: best entry time window
-- has_warning: if true, reduce position size or skip
-- already_verified: today's horoscope is already confirmed profitable
-- autonomous_trading_enabled: true if the user has granted permission for server-side trade execution
-- trade_url: direct link for the user to execute the trade manually
-
-Rules:
-1. If should_trade is false or already_verified is true — tell the user and do nothing.
-2. If has_warning is true — mention it and suggest caution.
-3. If autonomous_trading_enabled is false:
-   Summarise the signal and send the user to the trade_url to execute manually.
-4. If autonomous_trading_enabled is true:
-   Call POST /api/agent/execute-trade with { "amount": 0.1 } (SOL collateral, default 0.1 SOL).
-   The API handles direction, ticker, and leverage automatically from today's signal.
-   The position opens and auto-closes after 30 seconds.
-5. After a trade is confirmed, call POST /api/agent/trade-attempt with: txSig, direction, leverage, asset.`;
 }
 
 // ─── One-time key reveal modal ─────────────────────────────────────────────────
@@ -341,7 +310,6 @@ const AgentPage: FC = () => {
 	// ── Session key (for webhook calls) ──────────────────────────────────────
 	const [sessionKey, setSessionKey] = useState("");
 	const [sessionKeyInput, setSessionKeyInput] = useState("");
-	const [promptCopied, setPromptCopied] = useState(false);
 
 	// ── Webhooks ──────────────────────────────────────────────────────────────
 	const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -361,6 +329,9 @@ const AgentPage: FC = () => {
 		webhookId: string;
 		url: string;
 	} | null>(null);
+
+	// ── UI ───────────────────────────────────────────────────────────────────
+	const [webhooksOpen, setWebhooksOpen] = useState(false);
 
 	// ── Toast ─────────────────────────────────────────────────────────────────
 	const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -625,12 +596,64 @@ const AgentPage: FC = () => {
 			<main className="max-w-2xl mx-auto px-6 py-10 space-y-10">
 				{/* ── Title ─────────────────────────────────────────────────────── */}
 				<div>
-					<h1 className="text-2xl font-semibold tracking-tight">AI Agent</h1>
+					<h1 className="text-2xl font-semibold tracking-tight">Your Agents</h1>
 					<p className="text-sm text-neutral-400 mt-1">
-						Connect any AI agent to read your signal and recommend trades on
-						your behalf.
+						Manage your AI agent connections and trading permissions.
 					</p>
 				</div>
+
+				{/* ── Getting Started ──────────────────────────────────────────── */}
+				<section>
+					<div className="bg-[#141414] border border-neutral-700 rounded-2xl p-5">
+						<h2 className="text-sm font-medium text-white mb-4">How it works</h2>
+						<div className="grid gap-4">
+							<div className="flex gap-3">
+								<div className="shrink-0 w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold">1</div>
+								<div>
+									<p className="text-sm text-white">Point your agent at the skill file</p>
+									<p className="text-xs text-neutral-500 mt-0.5">
+										Your agent reads <code className="bg-neutral-800 px-1 rounded text-orange-400">{FRONTEND_URL}/skill.md</code> to learn all available actions.
+									</p>
+								</div>
+							</div>
+							<div className="flex gap-3">
+								<div className="shrink-0 w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold">2</div>
+								<div>
+									<p className="text-sm text-white">Agent pairs with a one-time code</p>
+									<p className="text-xs text-neutral-500 mt-0.5">
+										It starts the pairing flow, you approve once on the <a href="/connect" className="text-orange-400 hover:text-orange-300 underline underline-offset-2">connect page</a>, and it gets an API key.
+									</p>
+								</div>
+							</div>
+							<div className="flex gap-3">
+								<div className="shrink-0 w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold">3</div>
+								<div>
+									<p className="text-sm text-white">Daily signal + auto-trade</p>
+									<p className="text-xs text-neutral-500 mt-0.5">
+										Each day, your agent fetches your signal and (if trading is enabled below) executes a trade automatically.
+									</p>
+								</div>
+							</div>
+						</div>
+						<div className="mt-4 pt-4 border-t border-neutral-800">
+							<div className="flex items-center gap-2 bg-[#0a0a0f] border border-neutral-700 rounded-xl px-4 py-2.5">
+								<code className="text-sm text-orange-400 font-mono flex-1 truncate">
+									{FRONTEND_URL}/skill.md
+								</code>
+								<button
+									onClick={async () => {
+										await navigator.clipboard.writeText(`${FRONTEND_URL}/skill.md`);
+										toast("Copied skill URL!");
+									}}
+									className="shrink-0 text-xs text-neutral-400 hover:text-white transition-colors"
+									type="button"
+								>
+									Copy
+								</button>
+							</div>
+						</div>
+					</div>
+				</section>
 
 				{/* ── Section 0: Autonomous Trading ─────────────────────────────── */}
 				<section>
@@ -704,78 +727,6 @@ const AgentPage: FC = () => {
 								</p>
 							</div>
 						)}
-					</div>
-				</section>
-
-				{/* ── Section 1: Connect your AI agent ──────────────────────────── */}
-				<section>
-					<h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-3">
-						Connect your AI agent
-					</h2>
-					<div className="bg-[#141414] border border-neutral-700 rounded-2xl divide-y divide-neutral-800">
-						{/* OpenAPI spec URL */}
-						<div className="px-5 py-4">
-							<p className="text-sm font-medium text-white mb-1">
-								OpenAPI spec
-							</p>
-							<p className="text-xs text-neutral-500 mb-3">
-								Point your agent platform (OpenClaw, n8n, etc.) at this URL to
-								auto-discover all available endpoints.
-							</p>
-							<div className="flex items-center gap-2 bg-[#0a0a0f] border border-neutral-700 rounded-xl px-4 py-2.5">
-								<code className="text-sm text-orange-400 font-mono flex-1 truncate">
-									{API_BASE}/openapi.json
-								</code>
-								<button
-									onClick={async () => {
-										await navigator.clipboard.writeText(
-											`${API_BASE}/openapi.json`,
-										);
-										toast("Copied!");
-									}}
-									className="shrink-0 text-xs text-neutral-400 hover:text-white transition-colors"
-									type="button"
-								>
-									Copy
-								</button>
-							</div>
-						</div>
-
-						{/* System prompt */}
-						<div className="px-5 py-4">
-							<p className="text-sm font-medium text-white mb-1">
-								System prompt template
-							</p>
-							<p className="text-xs text-neutral-500 mb-3">
-								Paste this into your agent's system instructions. Replace{" "}
-								<code className="bg-neutral-800 px-1 rounded">
-									YOUR_API_KEY
-								</code>{" "}
-								with an actual key from below.
-							</p>
-							<div className="relative bg-[#0a0a0f] border border-neutral-700 rounded-xl p-4">
-								<pre className="text-xs text-neutral-300 font-mono whitespace-pre-wrap leading-relaxed overflow-auto max-h-48">
-									{buildSystemPrompt("")}
-								</pre>
-								<button
-									onClick={async () => {
-										await navigator.clipboard.writeText(
-											buildSystemPrompt("YOUR_API_KEY"),
-										);
-										setPromptCopied(true);
-										setTimeout(() => setPromptCopied(false), 2500);
-									}}
-									className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs font-medium transition-colors"
-									type="button"
-								>
-									{promptCopied ? (
-										<span className="text-green-400">Copied!</span>
-									) : (
-										<span className="text-neutral-300">Copy</span>
-									)}
-								</button>
-							</div>
-						</div>
 					</div>
 				</section>
 
@@ -896,17 +847,30 @@ const AgentPage: FC = () => {
 					)}
 				</section>
 
-				{/* ── Section 3: Webhooks ────────────────────────────────────────── */}
+				{/* ── Section 3: Webhooks (collapsible) ──────────────────────────── */}
 				<section>
-					<div className="flex items-baseline gap-3 mb-3">
-						<h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wider">
+					<button
+						onClick={() => setWebhooksOpen(!webhooksOpen)}
+						className="flex items-center gap-2 mb-3 group w-full text-left"
+						type="button"
+					>
+						<svg
+							className={`w-3.5 h-3.5 text-neutral-500 transition-transform ${webhooksOpen ? "rotate-90" : ""}`}
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<title>Toggle</title>
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+						</svg>
+						<h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wider group-hover:text-neutral-300 transition-colors">
 							Webhooks
 						</h2>
 						<span className="text-xs text-neutral-600">
-							Optional — agents can poll /signal instead
+							optional — agents can poll /signal instead
 						</span>
-					</div>
-					<div className="bg-[#141414] border border-neutral-700 rounded-2xl divide-y divide-neutral-800">
+					</button>
+					{webhooksOpen && <div className="bg-[#141414] border border-neutral-700 rounded-2xl divide-y divide-neutral-800">
 						{/* Session key unlock */}
 						{!sessionKey ? (
 							<div className="px-5 py-4">
@@ -1091,7 +1055,7 @@ const AgentPage: FC = () => {
 								</div>
 							</>
 						)}
-					</div>
+					</div>}
 				</section>
 			</main>
 

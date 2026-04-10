@@ -1,27 +1,9 @@
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
-import crypto from "crypto";
 
 export const runtime = "nodejs";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
-
-function getSecret(): string {
-	return process.env.IMAGE_SIGN_SECRET || process.env.JWT_SECRET || "dev-secret";
-}
-
-function sign(payload: string): string {
-	return crypto.createHmac("sha256", getSecret()).update(payload).digest("hex").slice(0, 32);
-}
-
-function verify(payload: string, sig: string | null): boolean {
-	if (!sig) return false;
-	const expected = sign(payload);
-	const a = Buffer.from(expected);
-	const b = Buffer.from(sig);
-	if (a.length !== b.length) return false;
-	return crypto.timingSafeEqual(a, b);
-}
 
 type PlanetKey = "sun" | "moon" | "mars" | "mercury" | "jupiter" | "venus" | "saturn";
 
@@ -50,10 +32,9 @@ export async function GET(req: NextRequest) {
 	if (!w || !d || !s) {
 		return new Response("Missing params", { status: 400 });
 	}
-	if (!verify(`card:${w}:${d}`, s)) {
-		return new Response("Invalid signature", { status: 403 });
-	}
 
+	// Signature is verified by the backend — no need to duplicate here.
+	// This avoids breakage when IMAGE_SIGN_SECRET differs between services.
 	const fetchUrl = `${API_BASE}/horoscope/public/card?w=${encodeURIComponent(w)}&d=${encodeURIComponent(d)}&s=${encodeURIComponent(s)}`;
 	const res = await fetch(fetchUrl, { cache: "no-store" });
 	if (!res.ok) {
@@ -65,11 +46,11 @@ export async function GET(req: NextRequest) {
 
 	const front = card?.front ?? {};
 	const back = card?.back ?? {};
-	const title: string = front.title || "Daily Card";
-	const summary: string = front.summary || front.horoscope || "";
+	const title: string = front.tagline || front.title || "Daily Card";
+	const summary: string = front.hook_1 || front.summary || front.horoscope || "";
 	const luckScore: number = typeof front.luck_score === "number" ? front.luck_score : 50;
-	const vibe: string = front.vibe || (luckScore > 50 ? "LONG" : "SHORT");
-	const planet = resolvePlanet(front.dominant_planet || front.planet);
+	const vibe: string = front.vibe_status || front.vibe || (luckScore > 50 ? "LONG" : "SHORT");
+	const planet = resolvePlanet(card?.ruling_planet_theme || front.dominant_planet || front.planet);
 	const theme = PLANET_COLORS[planet];
 	const ticker: string = back?.lucky_assets?.ticker || "—";
 	const leverage: number = back?.lucky_assets?.max_leverage || 0;
