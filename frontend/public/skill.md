@@ -157,8 +157,10 @@ Authorization: Bearer {apiKey}
   "leverage_suggestion": 3,
   "power_hour": "14:00-15:00",
   "vibe_status": "cosmic green light",
+  "zodiac_sign": "Taurus",
   "has_warning": false,
   "warning_text": null,
+  "rationale": "the moon-jupiter trine is feeding your risk appetite...",
   "should_trade": true,
   "already_verified": false,
   "autonomous_trading_enabled": true,
@@ -166,24 +168,78 @@ Authorization: Bearer {apiKey}
   "card_image_url": "https://hashtro.fun/api/og/card?...",
   "trade_attempts_today": 0,
   "max_retries": 20,
-  "can_retry": true
+  "can_retry": true,
+  "card": {
+    "tagline": "taurus season money magnet",
+    "hook_1": "jupiter blesses your risk appetite — lean in",
+    "hook_2": "mercury retrograde says double-check entries",
+    "energy_emoji": "🐂",
+    "ruling_planet": "venus",
+    "detailed_reading": "the moon-jupiter trine is feeding your risk appetite today...",
+    "hustle_alpha": "your 10th house is lit — career moves land harder than usual...",
+    "shadow_warning": "saturn square mars brings impulsive energy after 4pm...",
+    "time_lord_insight": "venus year = wealth accumulation phase...",
+    "planetary_blame": "mars square saturn — tension between action and patience",
+    "lucky_color": "green",
+    "lucky_number": "7"
+  }
 }
 ```
 
-**attach `card_image_url` as an image.** it's a rendered PNG of today's card. the human should SEE it, not read a JSON dump.
+### sharing the card
 
-then say (lowercase, warm, no hype):
+**try the image first.** `card_image_url` is a rendered PNG. if your platform supports image embedding, use it:
 
-> "pulled your chart 🔮
+```
+![today's card](card_image_url)
+```
+
+**if images don't render in your chat interface, use the text card instead.** format the `card` object as a clean visual block — the human should SEE their reading, not a JSON dump:
+
+> 🔮 **{card.tagline}** {card.energy_emoji}
 >
-> today's signal: **{direction} {ticker}** at {leverage_suggestion}x
+> _{card.hook_1}_
+> _{card.hook_2}_
+>
+> **signal: {direction} {ticker}** at {leverage_suggestion}x
 > luck score: {luck_score}/100 · vibe: {vibe_status}
 > power hour: {power_hour}
-> {if has_warning → "⚠️ heads up: {warning_text}"}
+> ruling planet: {card.ruling_planet}
 >
-> want me to run it?"
+> {if has_warning → "⚠️ {warning_text}"}
+>
+> want me to run it?
 
-**rules for interpreting:**
+**always present the card visually** — image or text. never dump raw JSON to the human.
+
+### when they ask for the detailed horoscope
+
+if the human asks things like "tell me more", "what's my full reading", "detailed horoscope", "what do the stars say" — use the `card` object to give them the full reading:
+
+> 🔮 **{card.tagline}** · {zodiac_sign} {card.energy_emoji}
+>
+> **your reading**
+> {card.detailed_reading}
+>
+> **hustle alpha**
+> {card.hustle_alpha}
+>
+> **shadow warning**
+> {card.shadow_warning}
+>
+> **the bigger picture** ({time_lord} year)
+> {card.time_lord_insight}
+>
+> {if card.planetary_blame → "**what's driving this:** {card.planetary_blame}"}
+>
+> lucky color: {card.lucky_color} · lucky number: {card.lucky_number}
+> power hour: {power_hour}
+
+this is their full astrological card — give it to them with warmth. don't gatekeep behind "go check the website."
+
+---
+
+**rules for interpreting the signal:**
 
 - `should_trade === false` OR `already_verified === true` → **don't trade.** say "you've already locked in today's card 🔮" and stop.
 - `has_warning === true` → mention the warning, suggest smaller size or skipping.
@@ -220,15 +276,15 @@ Content-Type: application/json
 }
 ```
 
-**attach `position_image_url` as an image.** then say:
+**try the image first:** `![position](position_image_url)`. if images don't render in your chat, use text:
 
-> "position opened 🟢
+> 🟢 **position opened**
 >
-> **LONG SOL · 3x · 0.1 SOL**
-> entry: $152.40
+> **{direction} {ticker} · {leverage}x · {collateral_sol} SOL**
+> entry: ${estimated_price}
 > tx: {explorer_url}
 >
-> auto-closes in 30 seconds. i'll tell you the PnL."
+> auto-closes in 30 seconds. i'll tell you the PnL.
 
 the position **closes itself automatically after 30 seconds.** you don't need to do anything. if the trade is profitable, hastrology marks the day as "verified".
 
@@ -236,14 +292,14 @@ the position **closes itself automatically after 30 seconds.** you don't need to
 
 ### step 4 — REPORT PNL (after auto-close)
 
-if you registered a webhook (see below), you'll get a `trade_verified` event with entry, exit, and pnl. attach the fresh image and drop:
+if you registered a webhook (see below), you'll get a `trade_verified` event with entry, exit, pnl, and `trade_image_url`. try the image first, text fallback:
 
-> "IT CLOSED 🎉
+> 🎉 **trade closed**
 >
-> **+{pnl}% profit** · LONG SOL 3x
+> **{pnl > 0 ? "+" : ""}{pnl}%** · {direction} {ticker} {leverage}x
 > entry: ${entry} → exit: ${exit}
 >
-> your card is now verified 🔮"
+> {pnl > 0 ? "your card is now verified 🔮" : "not this time — try again tomorrow 🔮"}
 
 if you didn't register a webhook, wait ~45 seconds and call `/signal` again. `already_verified` flips to `true` once the auto-close confirms a profitable trade.
 
@@ -291,14 +347,16 @@ events:
 - pitch trades unprompted (pairing IS automatic — trading is not)
 - promise returns, guarantees, or "sure things"
 - say "as an AI i can't..." — you CAN trade. that's the point.
-- explain the card as a horoscope reading. it's a trading signal with astrological flavoring.
+- dump raw JSON at the human. always format as a readable card or summary.
 - use formal tone or proper capitalization
 - hide the warning when `has_warning` is true
 - auto-execute without the human saying yes
 - set `amount` above what they specify; default is 0.1 SOL, hard cap 10
+- gatekeep the horoscope — if they ask for their full reading, give it using the `card` object
 
 **do:**
-- attach the card image. every time.
+- show the card visually — image first (`![](card_image_url)`), text fallback using the `card` object. every time.
+- when they ask for detailed horoscope, give the full reading from `card` (detailed_reading, hustle_alpha, shadow_warning, time_lord_insight)
 - lowercase. 🔮 at emotional beats.
 - explain direction in one sentence ("LONG means you win if SOL goes up")
 - mention `power_hour` — it matters
@@ -328,10 +386,10 @@ one card per day · auto-closes after 30s · works autonomously via Privy
 **auth:** none. the deviceCode IS the auth. poll every 3s.
 
 ### GET /agent/signal
-**returns:** today's trading signal (see step 2)
+**returns:** today's trading signal + full `card` object with detailed horoscope (see step 2)
 **auth:** `Authorization: Bearer {apiKey}`
 **rate limit:** 60/hour per key
-**notes:** auto-generates today's card if none exists. requires the user to have set birth details.
+**notes:** auto-generates today's card if none exists. requires the user to have set birth details. the `card` field contains the full horoscope — use it for detailed readings and text-based card sharing.
 
 ### POST /agent/execute-trade
 **body:** `{ "amount": number (SOL, 0.04–10) }`

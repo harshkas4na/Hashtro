@@ -123,6 +123,22 @@ function buildSignal(card, alreadyVerified, tradeAttemptsToday) {
         trade_attempts_today: tradeAttemptsToday,
         max_retries:         AGENT_MAX_RETRIES,
         can_retry:           canRetry,
+
+        // Full card content — for detailed horoscope and text-based sharing
+        card: {
+            tagline:             front.tagline          ?? null,
+            hook_1:              front.hook_1            ?? null,
+            hook_2:              front.hook_2            ?? null,
+            energy_emoji:        front.energy_emoji      ?? null,
+            ruling_planet:       card.ruling_planet_theme ?? card.ruling_planet ?? null,
+            detailed_reading:    back.detailed_reading   ?? null,
+            hustle_alpha:        back.hustle_alpha       ?? null,
+            shadow_warning:      back.shadow_warning     ?? null,
+            time_lord_insight:   back.time_lord_insight  ?? null,
+            planetary_blame:     back.planetary_blame    ?? null,
+            lucky_color:         assets.color            ?? null,
+            lucky_number:        assets.number           ?? null,
+        },
     };
 }
 
