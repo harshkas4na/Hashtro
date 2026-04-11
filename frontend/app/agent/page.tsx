@@ -28,6 +28,11 @@ const ALL_EVENTS: {
 			label: "trade_verified",
 			description: "Fired when a profitable trade verifies your horoscope",
 		},
+		{
+			value: "trade_close_failed",
+			label: "trade_close_failed",
+			description: "Fired when auto-close fails and the position may still be open",
+		},
 	];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -393,6 +398,7 @@ const AgentPage: FC = () => {
 	// ── Disable autonomous trading ────────────────────────────────────────────
 	const handleRevokeDelegation = async () => {
 		if (!publicKey) return;
+		if (!window.confirm("Are you sure? Your agent won't be able to trade automatically until you re-enable this.")) return;
 		setRevoking(true);
 		try {
 			await removeSigners({ address: publicKey });

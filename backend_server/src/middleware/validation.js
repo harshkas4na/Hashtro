@@ -38,25 +38,28 @@ const userRegistrationSchema = Joi.object({
     "any.required": "Wallet address is required",
   }),
 
-  twitterId: Joi.string().required().min(1).messages({
-    "string.empty": "Twitter id is required",
-    "any.required": "Twitter Id is required",
-  }),
+  twitterId: Joi.string().optional().allow(null, ""),
 
   username: Joi.string().required().min(1).messages({
     "string.empty": "Username is required",
     "any.required": "Username is required",
   }),
 
-  twitterUsername: Joi.string().required().min(1).messages({
-    "string.empty": "Twitter Username is required",
-    "any.required": "Twitter Username is required",
-  }),
+  twitterUsername: Joi.string().optional().allow(null, ""),
 
-  twitterProfileUrl: Joi.string().required().min(1).messages({
-    "string.empty": "Twitter Profile Url is required",
-    "any.required": "Twitter Profile Url is required",
-  }),
+  twitterProfileUrl: Joi.string().optional().allow(null, ""),
+
+  // Birth details — optional at registration, can be set later via /user/birth-details
+  dob: Joi.string().optional().allow(null, "").pattern(/^\d{4}-\d{2}-\d{2}$/),
+  birthTime: Joi.string().optional().allow(null, "").pattern(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  birthPlace: Joi.string().optional().allow(null, "").trim(),
+  latitude: Joi.number().optional().allow(null).min(-90).max(90),
+  longitude: Joi.number().optional().allow(null).min(-180).max(180),
+  timezoneOffset: Joi.number().optional().allow(null),
+
+  // Privy IDs — for server-side delegated actions
+  privyUserId: Joi.string().optional().allow(null, ""),
+  privyWalletId: Joi.string().optional().allow(null, ""),
 }).options({ stripUnknown: true });
 
 /**
@@ -250,7 +253,7 @@ const generateKeySchema = Joi.object({
 /**
  * Webhook registration validation schema
  */
-const WEBHOOK_EVENTS = ['horoscope_ready', 'trade_executed', 'trade_verified'];
+const WEBHOOK_EVENTS = ['horoscope_ready', 'trade_executed', 'trade_verified', 'trade_close_failed'];
 
 const webhookRegistrationSchema = Joi.object({
   url: Joi.string()
@@ -269,6 +272,18 @@ const webhookRegistrationSchema = Joi.object({
       "any.required": "events is required",
       "any.only": `events must be one of: ${WEBHOOK_EVENTS.join(', ')}`,
     }),
+}).options({ stripUnknown: true });
+
+/**
+ * Agent execute-trade validation schema.
+ */
+const executeTradeSchema = Joi.object({
+  amount: Joi.number().required().min(0.04).max(10).messages({
+    "number.base": "amount must be a number between 0.04 and 10 (SOL)",
+    "number.min": "amount must be at least 0.04 SOL",
+    "number.max": "amount must be at most 10 SOL",
+    "any.required": "amount is required",
+  }),
 }).options({ stripUnknown: true });
 
 /**
@@ -395,6 +410,7 @@ module.exports = {
   validateAddTimeConfirm: validate(updateTimeSchema),
   validateGenerateKey: validate(generateKeySchema),
   validateRevokeKey: validate(revokeKeySchema),
+  validateExecuteTrade: validate(executeTradeSchema),
   validateTradeAttempt: validate(tradeAttemptSchema),
   validatePairInitiate: validate(pairInitiateSchema),
   validatePairPoll: validate(pairPollSchema),

@@ -36,6 +36,11 @@ try {
 
 const config = getConfig();
 
+// ── Startup warnings ────────────────────────────────────────────────────────
+if (!process.env.IMAGE_SIGN_SECRET) {
+  logger.warn('IMAGE_SIGN_SECRET is not set — falling back to JWT_SECRET for image URL signing. Set a dedicated IMAGE_SIGN_SECRET in production.');
+}
+
 /**
  * Correlation ID — attach before any other middleware so every log line
  * can include req.requestId to trace a request end-to-end.

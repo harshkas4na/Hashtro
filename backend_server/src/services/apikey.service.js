@@ -151,6 +151,17 @@ class ApiKeyService {
         }
 
         logger.info('API key revoked', { keyId, walletAddress });
+
+        // Deactivate all webhooks that were created under this key
+        const { error: whError } = await this.supabase
+            .from('agent_webhooks')
+            .update({ active: false })
+            .eq('api_key_id', keyId);
+
+        if (whError) {
+            logger.warn('revokeKey: failed to deactivate webhooks for key', { keyId, error: whError.message });
+        }
+
         return true;
     }
 }

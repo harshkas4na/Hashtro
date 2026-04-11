@@ -110,8 +110,8 @@ class PairingService {
             return { status: 'invalid' };
         }
 
-        // Lazy expiration check
-        if (new Date(row.expires_at).getTime() < Date.now() && row.status === 'pending') {
+        // Expiry check — applies to all statuses except 'consumed' (already delivered key)
+        if (row.status !== 'consumed' && new Date(row.expires_at).getTime() < Date.now()) {
             await this.supabase
                 .from('agent_pairing_codes')
                 .update({ status: 'expired' })

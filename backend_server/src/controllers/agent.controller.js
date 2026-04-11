@@ -193,7 +193,20 @@ async function autoCloseAndVerify({ walletAddress, side, symbol, entryPrice, lev
     }
 
     if (!closeTxSig) {
-        logger.error('Agent auto-close: all close attempts failed — giving up', { walletAddress });
+        logger.error('Agent auto-close: ALL CLOSE ATTEMPTS FAILED — position may still be open on-chain', {
+            walletAddress, symbol, side, entryPrice, openTxSig,
+        });
+
+        // Notify agent/user so they can intervene
+        webhookService.deliver(walletAddress, 'trade_close_failed', {
+            openTxSig,
+            side,
+            symbol,
+            entryPrice,
+            leverage,
+            message: 'All close attempts failed. Position may still be open on-chain.',
+        }).catch(() => {});
+
         return;
     }
 
@@ -212,13 +225,26 @@ async function autoCloseAndVerify({ walletAddress, side, symbol, entryPrice, lev
     let verified = false;
 
     if (pnlPercent > 0) {
-        try {
-            const horoscopeService = require('../services/horoscope.service');
-            await horoscopeService.verifyHoroscope(walletAddress);
-            verified = true;
-            logger.info('Agent auto-close: horoscope verified', { walletAddress, pnlPercent });
-        } catch (err) {
-            logger.error('Agent auto-close: horoscope verification failed', { walletAddress, error: err?.message });
+        const horoscopeService = require('../services/horoscope.service');
+        for (let vAttempt = 1; vAttempt <= 2; vAttempt++) {
+            try {
+                await horoscopeService.verifyHoroscope(walletAddress);
+                verified = true;
+                logger.info('Agent auto-close: horoscope verified', { walletAddress, pnlPercent, attempt: vAttempt });
+                break;
+            } catch (err) {
+                logger.error('Agent auto-close: horoscope verification failed', {
+                    walletAddress, error: err?.message, attempt: vAttempt,
+                });
+                if (vAttempt < 2) {
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
+        }
+        if (!verified) {
+            logger.error('Agent auto-close: horoscope verification PERMANENTLY FAILED — trade was profitable but not marked verified', {
+                walletAddress, pnlPercent, closeTxSig,
+            });
         }
     } else {
         logger.info('Agent auto-close: trade was not profitable — horoscope not verified', { walletAddress, pnlPercent });
@@ -348,6 +374,10 @@ class AgentController {
             }
 
             const card            = horoscope.cards;
+            if (!card || typeof card !== 'object') {
+                logger.warn('getSignal: horoscope has invalid/null cards', { walletAddress, date: horoscope.date });
+                return errorResponse(res, 'Card format invalid — horoscope data may be corrupted. Try regenerating.', 422);
+            }
             const alreadyVerified = horoscope.verified || false;
             const tradeAttempts   = horoscope.trade_attempts ?? 0;
 

@@ -126,7 +126,7 @@ class WebhookService {
         try {
             const { data: rows, error } = await this.supabase
                 .from('agent_webhooks')
-                .select('id, url, secret')
+                .select('id, url, secret, api_key_id')
                 .eq('wallet_address', walletAddress)
                 .eq('active', true)
                 .contains('events', [event]);
@@ -135,7 +135,20 @@ class WebhookService {
                 logger.warn('webhook deliver: DB fetch failed', { event, err: error.message });
                 return;
             }
-            webhooks = rows || [];
+
+            // Defense-in-depth: filter out webhooks whose parent key is revoked
+            const keyIds = [...new Set((rows || []).map(r => r.api_key_id).filter(Boolean))];
+            let revokedKeyIds = new Set();
+            if (keyIds.length > 0) {
+                const { data: keys } = await this.supabase
+                    .from('agent_api_keys')
+                    .select('id')
+                    .in('id', keyIds)
+                    .eq('revoked', true);
+                revokedKeyIds = new Set((keys || []).map(k => k.id));
+            }
+
+            webhooks = (rows || []).filter(r => !revokedKeyIds.has(r.api_key_id));
         } catch (err) {
             logger.warn('webhook deliver: unexpected error fetching webhooks', err.message);
             return;

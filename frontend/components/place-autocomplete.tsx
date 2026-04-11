@@ -4,7 +4,9 @@ export const PlaceAutocomplete: FC<{
 	value: string;
 	onChange: (value: string) => void;
 	disabled: boolean;
-}> = ({ value, onChange, disabled }) => {
+	className?: string;
+	dropdownClassName?: string;
+}> = ({ value, onChange, disabled, className, dropdownClassName }) => {
 	const [suggestions, setSuggestions] = useState<any[]>([]);
 	const [showSuggestions, setShowSuggestions] = useState(false);
 	const [loading, setLoading] = useState(false);
@@ -62,7 +64,7 @@ export const PlaceAutocomplete: FC<{
 		<div className="relative">
 		
 			{showSuggestions && suggestions.length > 0 && (
-				<ul className="absolute z-50 w-full bottom-full mb-2 bg-[#1F1F1F] border border-[#2A2A2A] rounded-lg shadow-lg max-h-60 overflow-y-auto">
+				<ul className={dropdownClassName || "absolute z-50 w-full bottom-full mb-2 bg-[#1F1F1F] border border-[#2A2A2A] rounded-lg shadow-lg max-h-60 overflow-y-auto"}>
 					{suggestions.map((suggestion, index) => (
 						<li
 							key={suggestion.place_id || index}
@@ -84,7 +86,7 @@ export const PlaceAutocomplete: FC<{
 			)}
 
 			<input
-				className="
+				className={className || `
                     w-full px-4 py-3 rounded-lg
                     bg-[#121212]
                     border border-[#2A2A2A]
@@ -94,7 +96,7 @@ export const PlaceAutocomplete: FC<{
                     focus:border-[#FC5411]
                     disabled:opacity-50
                     disabled:cursor-not-allowed
-                "
+                `}
 				disabled={disabled}
 				onChange={handleInput}
 				placeholder="Place of Birth (e.g., New York, USA)"

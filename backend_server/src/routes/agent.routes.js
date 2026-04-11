@@ -5,6 +5,7 @@ const {
     validateGenerateKey,
     validateRevokeKey,
     validateWalletParam,
+    validateExecuteTrade,
     validateTradeAttempt,
     validateWebhookRegistration,
     validatePairInitiate,
@@ -117,7 +118,7 @@ router.post(
  */
 router.get(
     '/pair/lookup/:userCode',
-    generalLimiter,
+    authLimiter,
     agentController.pairLookup,
 );
 
@@ -248,6 +249,7 @@ router.post(
     '/execute-trade',
     agentSignalLimiter,
     agentAuth,
+    validateExecuteTrade,
     agentController.executeTrade
 );
 

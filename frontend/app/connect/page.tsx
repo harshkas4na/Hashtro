@@ -157,7 +157,23 @@ const ConnectPageInner: FC = () => {
 			}
 		} catch (err) {
 			const msg = err instanceof ApiError ? err.message : "Registration failed";
-			setRegisterError(msg);
+			// If wallet already exists, skip registration and try claim directly
+			const isDuplicate = msg.toLowerCase().includes("already") ||
+				msg.toLowerCase().includes("duplicate") ||
+				msg.toLowerCase().includes("unique") ||
+				msg.toLowerCase().includes("exists");
+			if (isDuplicate) {
+				setNeedsRegistration(false);
+				try {
+					await api.claimPairing(publicKey, code);
+					setClaimed(true);
+				} catch (claimErr) {
+					const claimMsg = claimErr instanceof ApiError ? claimErr.message : "Could not approve pairing";
+					setClaimError(claimMsg);
+				}
+			} else {
+				setRegisterError(msg);
+			}
 		} finally {
 			setIsRegistering(false);
 		}
@@ -190,12 +206,29 @@ const ConnectPageInner: FC = () => {
 						<p className="text-sm text-white/80 mb-4">
 							you can close this tab. your agent will pick up its key on its next check.
 						</p>
-						<a
-							href="/agent"
-							className="inline-block text-sm text-purple-300 hover:text-purple-100 underline"
-						>
-							manage paired agents →
-						</a>
+						<div className="flex items-center gap-4">
+							<a
+								href="/agent"
+								className="text-sm text-purple-300 hover:text-purple-100 underline"
+							>
+								manage paired agents →
+							</a>
+							<button
+								type="button"
+								onClick={() => {
+									setClaimed(false);
+									setCode("");
+									setAgentName(null);
+									setClaimError(null);
+									setLookupError(null);
+									setNeedsRegistration(false);
+									setRegisterError(null);
+								}}
+								className="text-sm text-white/50 hover:text-white/70 underline"
+							>
+								pair another agent
+							</button>
+						</div>
 					</div>
 				) : needsRegistration ? (
 					/* ── Birth details form for new users ─────────────────────────── */
@@ -241,6 +274,8 @@ const ConnectPageInner: FC = () => {
 								value={birthPlace}
 								onChange={setBirthPlace}
 								disabled={isRegistering}
+								className="w-full rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-white placeholder-white/30 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400/30"
+								dropdownClassName="absolute z-50 w-full bottom-full mb-2 bg-black/80 border border-white/15 rounded-lg shadow-lg max-h-60 overflow-y-auto backdrop-blur"
 							/>
 						</div>
 
@@ -285,6 +320,9 @@ const ConnectPageInner: FC = () => {
 								spellCheck={false}
 								className="w-full rounded-lg border border-white/15 bg-white/5 px-4 py-3 font-mono text-lg uppercase tracking-wider text-white placeholder-white/30 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400/30"
 							/>
+							<p className="mt-1.5 text-xs text-white/40">
+								codes expire after 15 minutes and can only be used once.
+							</p>
 							{isLookingUp && (
 								<p className="mt-2 text-xs text-white/50">checking code…</p>
 							)}

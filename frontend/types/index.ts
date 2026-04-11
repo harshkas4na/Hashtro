@@ -265,7 +265,7 @@ export interface ApiKey {
 	revoked: boolean;
 }
 
-export type WebhookEvent = 'horoscope_ready' | 'trade_verified';
+export type WebhookEvent = 'horoscope_ready' | 'trade_verified' | 'trade_close_failed';
 
 export interface Webhook {
 	id: string;
