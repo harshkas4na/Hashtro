@@ -5,11 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { FC, Suspense, useCallback, useEffect, useState } from "react";
 import { StarBackground } from "@/components/StarBackground";
 import { usePrivyWallet } from "@/app/hooks/use-privy-wallet";
+import { PlaceAutocomplete } from "@/components/place-autocomplete";
+import { geocodePlace, getTimezoneOffset } from "@/lib/geocoding";
 import { ApiError, api } from "@/lib/api";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Normalize what the user typed into the canonical "HSTRO-XXXX-XXXX" form. */
 function normalizeCode(raw: string): string {
 	const cleaned = raw.toUpperCase().trim().replace(/\s+/g, "");
 	if (!cleaned.startsWith("HSTRO")) return cleaned;
@@ -26,7 +27,7 @@ function isValidCode(code: string): boolean {
 
 const ConnectPageInner: FC = () => {
 	const searchParams = useSearchParams();
-	const { publicKey, connected } = usePrivyWallet();
+	const { publicKey, connected, userId, walletId } = usePrivyWallet();
 	const { login } = useLogin();
 
 	const [code, setCode] = useState("");
@@ -36,6 +37,14 @@ const ConnectPageInner: FC = () => {
 	const [isClaiming, setIsClaiming] = useState(false);
 	const [claimError, setClaimError] = useState<string | null>(null);
 	const [claimed, setClaimed] = useState(false);
+
+	// ── Registration (for new users) ─────────────────────────────────────────
+	const [needsRegistration, setNeedsRegistration] = useState(false);
+	const [dob, setDob] = useState("");
+	const [birthTime, setBirthTime] = useState("");
+	const [birthPlace, setBirthPlace] = useState("");
+	const [isRegistering, setIsRegistering] = useState(false);
+	const [registerError, setRegisterError] = useState<string | null>(null);
 
 	// Prefill from ?code= in the URL
 	useEffect(() => {
@@ -84,6 +93,7 @@ const ConnectPageInner: FC = () => {
 		};
 	}, [code]);
 
+	// Claim pairing — detects "not registered" and switches to registration mode
 	const handleClaim = useCallback(async () => {
 		if (!publicKey || !isValidCode(code)) return;
 		setIsClaiming(true);
@@ -93,11 +103,65 @@ const ConnectPageInner: FC = () => {
 			setClaimed(true);
 		} catch (err) {
 			const msg = err instanceof ApiError ? err.message : "Could not approve pairing";
-			setClaimError(msg);
+			if (msg.toLowerCase().includes("not registered") || msg.toLowerCase().includes("sign up")) {
+				setNeedsRegistration(true);
+				setClaimError(null);
+			} else {
+				setClaimError(msg);
+			}
 		} finally {
 			setIsClaiming(false);
 		}
 	}, [publicKey, code]);
+
+	// Register new user, then auto-retry claim
+	const handleRegister = useCallback(async () => {
+		if (!publicKey || !dob) return;
+		setIsRegistering(true);
+		setRegisterError(null);
+		try {
+			let latitude: number | undefined;
+			let longitude: number | undefined;
+			let timezoneOffset: number | undefined;
+
+			if (birthPlace.trim()) {
+				const geo = await geocodePlace(birthPlace.trim());
+				if (geo.success) {
+					latitude = geo.latitude;
+					longitude = geo.longitude;
+					timezoneOffset = getTimezoneOffset(birthPlace, geo.longitude);
+				}
+			}
+
+			await api.registerUser({
+				walletAddress: publicKey,
+				username: publicKey.slice(0, 8),
+				dob,
+				birthTime: birthTime || undefined,
+				birthPlace: birthPlace.trim() || undefined,
+				latitude,
+				longitude,
+				timezoneOffset,
+				privyUserId: userId,
+				privyWalletId: walletId,
+			});
+
+			// Registration succeeded — now claim the pairing automatically
+			setNeedsRegistration(false);
+			try {
+				await api.claimPairing(publicKey, code);
+				setClaimed(true);
+			} catch (err) {
+				const msg = err instanceof ApiError ? err.message : "Could not approve pairing";
+				setClaimError(msg);
+			}
+		} catch (err) {
+			const msg = err instanceof ApiError ? err.message : "Registration failed";
+			setRegisterError(msg);
+		} finally {
+			setIsRegistering(false);
+		}
+	}, [publicKey, dob, birthTime, birthPlace, userId, walletId, code]);
 
 	// ─── Rendering ──────────────────────────────────────────────────────────────
 
@@ -133,7 +197,76 @@ const ConnectPageInner: FC = () => {
 							manage paired agents →
 						</a>
 					</div>
+				) : needsRegistration ? (
+					/* ── Birth details form for new users ─────────────────────────── */
+					<div className="rounded-2xl border border-white/10 bg-black/40 p-6 backdrop-blur space-y-5">
+						<div>
+							<h2 className="text-lg font-semibold text-white">one more step</h2>
+							<p className="mt-1 text-sm text-white/60">
+								we need your birth details to generate personalized astrological signals.
+							</p>
+						</div>
+
+						<div>
+							<label htmlFor="dob" className="block text-xs uppercase tracking-wider text-white/60 mb-2">
+								date of birth
+							</label>
+							<input
+								id="dob"
+								type="date"
+								value={dob}
+								onChange={(e) => setDob(e.target.value)}
+								className="w-full rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-white focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400/30 [color-scheme:dark]"
+							/>
+						</div>
+
+						<div>
+							<label htmlFor="birth-time" className="block text-xs uppercase tracking-wider text-white/60 mb-2">
+								birth time <span className="text-white/30">(optional)</span>
+							</label>
+							<input
+								id="birth-time"
+								type="time"
+								value={birthTime}
+								onChange={(e) => setBirthTime(e.target.value)}
+								className="w-full rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-white focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400/30 [color-scheme:dark]"
+							/>
+						</div>
+
+						<div>
+							<label className="block text-xs uppercase tracking-wider text-white/60 mb-2">
+								birth place <span className="text-white/30">(optional)</span>
+							</label>
+							<PlaceAutocomplete
+								value={birthPlace}
+								onChange={setBirthPlace}
+								disabled={isRegistering}
+							/>
+						</div>
+
+						{registerError && (
+							<p className="text-xs text-red-300">{registerError}</p>
+						)}
+
+						<button
+							type="button"
+							onClick={handleRegister}
+							disabled={!dob || isRegistering}
+							className="w-full rounded-lg bg-purple-500 px-4 py-3 font-semibold text-white transition hover:bg-purple-400 disabled:cursor-not-allowed disabled:opacity-40"
+						>
+							{isRegistering ? "setting up…" : `sign up & approve ${agentName || "agent"}`}
+						</button>
+
+						<button
+							type="button"
+							onClick={() => { setNeedsRegistration(false); setClaimError(null); }}
+							className="w-full text-xs text-white/40 hover:text-white/60 transition-colors"
+						>
+							go back
+						</button>
+					</div>
 				) : (
+					/* ── Normal pairing flow ──────────────────────────────────────── */
 					<div className="rounded-2xl border border-white/10 bg-black/40 p-6 backdrop-blur space-y-5">
 						<div>
 							<label
