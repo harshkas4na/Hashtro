@@ -26,5 +26,5 @@ export interface TradeResult {
 	txSig?: string;
 }
 
-const TRADE_DURATION = 30; // seconds
+const TRADE_DURATION = 60; // seconds
 
