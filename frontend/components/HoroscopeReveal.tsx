@@ -17,28 +17,29 @@ export interface CoinAllocation {
 	minScore: number;
 	maxScore: number;
 	displayName: string;
+	maxLeverage: number;
 }
 
 // Add this constant after POOL_CONFIGS
 export const COIN_ALLOCATIONS: CoinAllocation[] = [
 	// 0-50 range (10 points each)
-	{ symbol: "BNB", minScore: 0, maxScore: 10, displayName: "BNB" },
-	{ symbol: "BTC", minScore: 10, maxScore: 20, displayName: "Bitcoin" },
-	{ symbol: "ZEC", minScore: 20, maxScore: 30, displayName: "Zcash" },
-	{ symbol: "ETH", minScore: 30, maxScore: 40, displayName: "Ethereum" },
-	{ symbol: "SOL", minScore: 40, maxScore: 50, displayName: "Solana" },
-	// 50-200 range (30 points each)
-	{ symbol: "BNB", minScore: 50, maxScore: 60, displayName: "BNB" },
-	{ symbol: "BTC", minScore: 60, maxScore: 70, displayName: "Bitcoin" },
-	{ symbol: "SOL", minScore: 70, maxScore: 80, displayName: "Solana" },
-	{ symbol: "ETH", minScore: 80, maxScore: 90, displayName: "Ethereum" },
-	{ symbol: "ZEC", minScore: 90, maxScore: 100, displayName: "ZCash" },
+	{ symbol: "BNB", minScore: 0,  maxScore: 10,  displayName: "BNB",     maxLeverage: 50  },
+	{ symbol: "BTC", minScore: 10, maxScore: 20,  displayName: "Bitcoin", maxLeverage: 100 },
+	{ symbol: "ZEC", minScore: 20, maxScore: 30,  displayName: "Zcash",   maxLeverage: 10  },
+	{ symbol: "ETH", minScore: 30, maxScore: 40,  displayName: "Ethereum",maxLeverage: 100 },
+	{ symbol: "SOL", minScore: 40, maxScore: 50,  displayName: "Solana",  maxLeverage: 100 },
+	// 50-100 range (10 points each)
+	{ symbol: "BNB", minScore: 50, maxScore: 60,  displayName: "BNB",     maxLeverage: 50  },
+	{ symbol: "BTC", minScore: 60, maxScore: 70,  displayName: "Bitcoin", maxLeverage: 100 },
+	{ symbol: "SOL", minScore: 70, maxScore: 80,  displayName: "Solana",  maxLeverage: 100 },
+	{ symbol: "ETH", minScore: 80, maxScore: 90,  displayName: "Ethereum",maxLeverage: 100 },
+	{ symbol: "ZEC", minScore: 90, maxScore: 100, displayName: "ZCash",   maxLeverage: 10  },
 ];
 
 // Add helper function to get coin from luck score
 export const getCoinFromLuckScore = (luckScore: number): CoinAllocation => {
 	// Normalize luck score to 0-200 range
-	const normalizedScore = Math.max(0, Math.min(200, luckScore));
+	const normalizedScore = Math.max(0, Math.min(100, luckScore));
 
 	const allocation = COIN_ALLOCATIONS.find(
 		(coin) =>
@@ -359,7 +360,7 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 												setShowEducation(false);
 											}}
 										>
-											A quick 30-second leveraged trade on SOL will verify your
+											A quick 60-second leveraged trade on SOL will verify your
 											horoscope. Position auto-closes. Profits are yours.
 										</motion.div>
 									)}
@@ -370,41 +371,20 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 							<button
 								onClick={(e) => {
 									e.stopPropagation();
-									if (!(verified)) onVerifyTrade();
+									onVerifyTrade();
 								}}
-								disabled={verified}
-								className={`btn-primary w-full text-sm sm:text-base ${verified
-									? "opacity-70 cursor-not-allowed"
-									: ""
-									}`}
+								className="btn-primary w-full text-sm sm:text-base"
 							>
-								{verified ? (
-									<>
-										<svg
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="2"
-											className="w-5 h-5"
-										>
-											<path d="M20 6 9 17l-5-5" />
-										</svg>
-										Verified for today
-									</>
-								) : (
-									<>
-										<svg
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="2"
-											className="w-5 h-5"
-										>
-											<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-										</svg>
-										Verify with Trade
-									</>
-								)}
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									className="w-5 h-5"
+								>
+									<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+								</svg>
+								{verified ? "Trade Again" : "Verify with Trade"}
 							</button>
 
 							<p className="text-center mt-4 text-[10px] sm:text-xs text-white/40">
@@ -412,7 +392,7 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 							</p>
 
 							{/* Share on X button — Twitter Web Intent, no API needed */}
-							{/* <button
+							<button
 								onClick={(e) => {
 									e.stopPropagation();
 									const text = `my cosmic reading for today on @tryhashtro\n\n"${card.front.tagline}"\n\n${card.front.hook_1}\n\n#Hashtro hashtro.fun`;
@@ -432,7 +412,7 @@ export const HoroscopeReveal: FC<HoroscopeRevealProps> = ({
 									<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
 								</svg>
 								Share Reading on X
-							</button> */}
+							</button>
 
 							{/* Flash.trade CTA */}
 							<a
