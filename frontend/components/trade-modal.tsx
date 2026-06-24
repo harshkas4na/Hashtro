@@ -33,13 +33,11 @@ type SuccessState = {
 	closeTxSig?: string;
 };
 
-const TRADE_DURATION = 60; // seconds
+const TRADE_DURATION = 30; // seconds
 const MIN_TRADE_AMOUNT_SOL = 0.04;
-const MAX_TRADE_AMOUNT_SOL = 1;
 const GAS_BUFFER_SOL = 0.015; // covers open + close tx fees + priority fees
 
 const QUICK_AMOUNTS = [0.1, 0.25, 0.5, 1];
-
 
 export const TradeModal: React.FC<TradeModalProps> = ({
 	card,
@@ -52,13 +50,14 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 	const [isFetchingPrice, setIsFetchingPrice] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<SuccessState | null>(null);
-	const [amount, setTradeAmount] = useState(MIN_TRADE_AMOUNT_SOL);
+	const [amount, setTradeAmount] = useState(0.04);
 	const [pnl, setPnl] = useState(0);
 	const [pnlPercent, setPnlPercent] = useState(0);
 	const [currentPrice, setCurrentPrice] = useState(0);
 	const [entryPrice, setEntryPrice] = useState(0);
-	const coin = getCoinFromLuckScore(card.front.luck_score);
-	const leverage = Math.max(10, Math.min(Number(card.back.lucky_assets.max_leverage ?? 25), coin.maxLeverage));
+	// Use the asset-specific max_leverage cap from the card rather than the
+	// lucky number (a numerology value unrelated to trading leverage limits).
+	const leverage = Math.min(Number(card.back.lucky_assets.max_leverage ?? 2), 50);
 	const [statusMessage, setStatusMessage] = useState("Opening position...");
 	const [showEducation, setShowEducation] = useState(false);
 	const [tradeDetails, setTradeDetails] = useState<{
@@ -229,7 +228,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 					leverage,
 					symbol: getCoinFromLuckScore(card.front.luck_score).symbol,
 				},
-				TRADE_DURATION,
+				30,
 			);
 
 			setPhase("active");
@@ -243,7 +242,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 						const now = Date.now();
 						const next = [...prev, { t: now, price }];
 
-						return next.filter((p) => now - p.t <= TRADE_DURATION * 1000);
+						return next.filter((p) => now - p.t <= 30_000);
 					});
 				} catch (priceErr) {
 					console.warn("Price update failed:", priceErr);
@@ -264,7 +263,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 				leverage,
 				size: result.size,
 				entryPrice: result.estimatedPrice,
-				message: `Position opened! Auto-closing in ${TRADE_DURATION}s`,
+				message: "Position opened! Auto-closing in 30s",
 				closeAtTimestamp: result.closeAtTimestamp,
 			});
 
@@ -555,7 +554,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 				type: "close",
 				txSig: result.txSig,
 				direction: latestPosition.direction,
-				leverage,
+				leverage: Math.min(Number(card.back.lucky_assets.max_leverage ?? 2), 50),
 				pnl: latestPosition.pnl,
 				size: latestPosition.size,
 				entryPrice: latestPosition.entryPrice,
@@ -790,8 +789,8 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 									<input
 										type="number"
 										value={amount}
-										onChange={(e) => setTradeAmount(Math.min(Number(e.target.value), MAX_TRADE_AMOUNT_SOL))}
-										min={MIN_TRADE_AMOUNT_SOL}
+										onChange={(e) => setTradeAmount(Number(e.target.value))}
+										min={10}
 										className="w-full py-5 px-6 pl-17 bg-white/5 border border-white/10 rounded-xl text-2xl font-display font-semibold focus:outline-none focus:border-[#d4a017]/50"
 									/>
 								</div>
@@ -831,7 +830,9 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 									>
 										This opens a <strong>{direction.toLowerCase()}</strong>{" "}
 										position on SOL at <strong>{leverage}x</strong> leverage
-										using <strong>{amount} SOL</strong>. It auto-closes in {TRADE_DURATION} seconds. You&apos;ll approve 2 transactions: open and pre-sign auto-close.
+										using <strong>{amount} SOL</strong>. It auto-closes in 30
+										seconds. You'll approve 2 transactions: open and pre-sign
+										auto-close.
 									</div>
 								)}
 							</div>
